@@ -67,9 +67,9 @@ export class HouseActions {
   }
 
   // Returns { ok, reason } straight away; the house catches up later.
-  call(entityId, service, data = {}) {
-    const domain = domainOf(entityId);
-    if (!this.allowed(entityId)) return { ok: false, reason: 'not-allowed' };
+  // domain defaults to the entity's own (fly_house.loom targets a sensor).
+  call(entityId, service, data = {}, domain = domainOf(entityId), allowedAnyway = false) {
+    if (!allowedAnyway && !this.allowed(entityId)) return { ok: false, reason: 'not-allowed' };
     const now = Date.now();
     // Lights and plugs are limited per entity (flicker is the risk); anything
     // else only per action, so waking the vacuum then killing it both count.

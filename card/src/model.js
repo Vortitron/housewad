@@ -188,5 +188,28 @@ export function buildHouse(hass, { exclude = [] } = {}) {
   return {
     floors: Object.values(floors).map((f) => ({ id: f.floor_id, name: f.name, level: f.level ?? 0 })),
     rooms: houseRooms,
+    flies: findFlies(hass, exclude),
   };
+}
+
+// HouseFly (github.com/Vortitron/HouseFly) flies: a simulated fruit-fly brain
+// per config entry, each with <prefix>_mode and <prefix>_heading sensors.
+// The registry says which platform made them; without a registry, a mode
+// sensor with a heading and Kenyon-cell sibling is a fly.
+export function findFlies(hass, exclude = []) {
+  const entities = hass.entities || {};
+  const flies = [];
+  for (const entityId of Object.keys(hass.states).sort()) {
+    const m = /^sensor\.(.+)_mode$/.exec(entityId);
+    if (!m) continue;
+    const prefix = m[1];
+    const heading = `sensor.${prefix}_heading`;
+    const reg = entities[entityId];
+    const isFly = reg && reg.platform ? reg.platform === 'fly_house' : !!hass.states[`sensor.${prefix}_kenyon_cells_active`];
+    if (!isFly || !hass.states[heading]) continue;
+    if (exclude.some((p) => matches(p, entityId))) continue;
+    const name = (hass.states[entityId].attributes.friendly_name || prefix).replace(/ Mode$/, '');
+    flies.push({ id: prefix, name, mode: entityId, heading });
+  }
+  return flies;
 }

@@ -55,6 +55,10 @@ export function makeFakeHass(onUpdate) {
   add('binary_sensor.bedroom_window', 'on', { friendly_name: 'Bedroom Window', device_class: 'window' }, 'bedroom');
   add('climate.house', 'heat', { friendly_name: 'House Heating', hvac_action: 'heating' }, 'hallway');
   add('sun.sun', 'above_horizon', { friendly_name: 'Sun' }, null);
+  add('sensor.test_fly_mode', 'walk', { friendly_name: 'Test Fly Mode' }, null);
+  add('sensor.test_fly_heading', '90', { friendly_name: 'Test Fly Heading' }, null);
+  add('sensor.test_fly_kenyon_cells_active', '30', { friendly_name: 'Test Fly Kenyon cells active' }, null);
+  for (const id of ['sensor.test_fly_mode', 'sensor.test_fly_heading', 'sensor.test_fly_kenyon_cells_active']) entities[id].platform = 'fly_house';
   add('switch.config_thing', 'on', { friendly_name: 'Hidden config switch' }, 'kitchen');
   entities['switch.config_thing'].entity_category = 'config';
 
@@ -121,6 +125,9 @@ export function makeFakeHass(onUpdate) {
           case 'cover.close_cover':
             set(id, 'closing');
             return later(1500, () => set(id, 'closed'));
+          case 'fly_house.loom':
+            set('sensor.test_fly_mode', 'escape');
+            return later(4000, () => set('sensor.test_fly_mode', 'walk'));
           default:
             return undefined;
         }

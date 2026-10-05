@@ -28,6 +28,16 @@ house.wad is a Home Assistant dashboard card. It reads your floors, areas and de
 
 If killing a monster doesn't fix the problem (the light didn't turn off, say), the monster comes back.
 
+### Fly brains
+
+If you run [HouseFly](https://github.com/Vortitron/HouseFly) (a simulated fruit-fly brain, 4,724 real neurons, living in Home Assistant), each fly walks the level as an arachnotron: a brain on legs. Its real heading steers it and its real mode decides whether it walks, grooms or sleeps.
+
+- **Shoot it** and the real fly is *loomed*: its escape neurons fire, it bolts, and it learns to dislike where it was standing.
+- **Use** it and you feed it sugar: dopamine, a good memory.
+- **Kill it** and nothing happens to the fly. It's a connectome. It comes back.
+
+Turn this off with `flies: false`.
+
 ## Install
 
 **HACS:** add this repository as a custom repository (type *Dashboard*), install **house.wad**, then add the card to a dashboard. A panel view gives it the whole screen.
@@ -62,6 +72,7 @@ exclude:                  # leave things out of the house altogether
   - switch.server_rack
 skill: 3                  # 1 (I'm too young to die) to 5 (Nightmare!)
 confirm_unlock: true      # ask Y/N before unlocking a lock or opening a door cover
+flies: true               # HouseFly brains walk the level
 rules:
   empty_minutes: 10       # a light on in an empty room this long is a lost soul
   standby_min: 0.3        # watts

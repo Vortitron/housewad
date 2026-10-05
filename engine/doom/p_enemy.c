@@ -592,9 +592,15 @@ void A_Look (mobj_t* actor)
     mobj_t*	targ;
 
     // housewad: a dormant house monster (the docked vacuum) ignores the player
-    // until something hurts it.
+    // until something hurts it; a puppet goes where the house steers it.
     if (actor->hw_flags & HW_DORMANT)
 	return;
+    if (actor->hw_flags & HW_PUPPET)
+    {
+	if (actor->hw_speed > 0)
+	    P_SetMobjState(actor, actor->info->seestate);
+	return;
+    }
 	
     actor->threshold = 0;	// any shot will wake up
     targ = actor->subsector->sector->soundtarget;
@@ -663,6 +669,13 @@ void A_Look (mobj_t* actor)
 void A_Chase (mobj_t*	actor)
 {
     int		delta;
+
+    // housewad: puppets walk where the house tells them, and never attack.
+    if (actor->hw_flags & HW_PUPPET)
+    {
+	HW_PuppetChase(actor);
+	return;
+    }
 
     if (actor->reactiontime)
 	actor->reactiontime--;

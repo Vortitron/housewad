@@ -280,6 +280,8 @@ typedef struct mobj_s
     // housewad: the house object this thing stands for (0 = none) and its flags.
     int			hw_slot;
     int			hw_flags;
+    int			hw_heading; // housewad: puppet heading, degrees
+    int			hw_speed;   // housewad: puppet step, map units per chase
     
 } mobj_t;
 

@@ -57,6 +57,11 @@ boolean HW_OnDamage(mobj_t *target, mobj_t *inflictor, mobj_t *source, int damag
         return true;
     }
 
+    if (target->hw_flags & HW_PUPPET)
+    {
+        js_house_event(HW_EV_HURT, target->hw_slot, damage, ByPlayer(source));
+    }
+
     if (target->hw_flags & HW_DORMANT)
     {
         target->hw_flags &= ~HW_DORMANT;
@@ -376,6 +381,7 @@ int hw_type(const char *name)
         {"lostsoul", MT_SKULL},
         {"cacodemon", MT_HEAD},
         {"shotgunguy", MT_SHOTGUY},
+        {"arachnotron", MT_BABY},
     };
     unsigned i;
 
@@ -433,4 +439,79 @@ void hw_confirm(const char *text, int token)
     buffer[sizeof(buffer) - 1] = '\0';
     confirm_token = token;
     M_StartMessage(buffer, HW_ConfirmResponse, true);
+}
+
+// Puppets ---------------------------------------------------------------------
+
+static angle_t DegreesToAngle(int degrees)
+{
+    degrees %= 360;
+    if (degrees < 0)
+        degrees += 360;
+    return (angle_t) (((unsigned long long) degrees << 32) / 360);
+}
+
+static boolean PuppetStep(mobj_t *actor, angle_t angle)
+{
+    fixed_t step = actor->hw_speed << FRACBITS;
+    unsigned fine = angle >> ANGLETOFINESHIFT;
+
+    return P_TryMove(actor, actor->x + FixedMul(step, finecosine[fine]),
+                     actor->y + FixedMul(step, finesine[fine]));
+}
+
+// One chase step for a puppet: turn towards the heading it was given (at most
+// 45 degrees a step, so it looks like walking, not snapping), then walk. A
+// wall makes it slide along by trying the nearest open angle instead.
+void HW_PuppetChase(mobj_t *actor)
+{
+    static const int tries[] = {45, -45, 90, -90, 135, -135, 180};
+    angle_t want = DegreesToAngle(actor->hw_heading);
+    angle_t diff = want - actor->angle;
+    unsigned i;
+
+    if (actor->hw_speed <= 0)
+    {
+        P_SetMobjState(actor, actor->info->spawnstate);
+        return;
+    }
+    if (diff < ANG180)
+        actor->angle += diff > ANG45 ? ANG45 : diff;
+    else
+        actor->angle -= (angle_t) -diff > ANG45 ? ANG45 : (angle_t) -diff;
+
+    if (PuppetStep(actor, actor->angle))
+        return;
+    for (i = 0; i < sizeof(tries) / sizeof(*tries); i++)
+    {
+        angle_t a = actor->angle + DegreesToAngle(tries[i]);
+        if (PuppetStep(actor, a))
+        {
+            actor->angle = a;
+            return;
+        }
+    }
+}
+
+// Steer a slot's thing. speed 0 stands it still; enable 0 hands it back to
+// Doom's own AI.
+EMSCRIPTEN_KEEPALIVE
+void hw_puppet(int slot, int enable, int heading, int speed)
+{
+    mobj_t *mo = Slot(slot);
+
+    if (mo == NULL || mo->health <= 0)
+        return;
+    if (!enable)
+    {
+        mo->hw_flags &= ~HW_PUPPET;
+        return;
+    }
+    mo->hw_flags |= HW_PUPPET;
+    mo->hw_flags &= ~HW_DORMANT;
+    mo->hw_heading = heading;
+    mo->hw_speed = speed;
+    mo->target = NULL;
+    if (speed > 0 && mo->state == &states[mo->info->spawnstate])
+        P_SetMobjState(mo, mo->info->seestate);
 }

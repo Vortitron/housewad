@@ -10,6 +10,7 @@
 //   exclude: [switch.server_rack]   # leave things out of the house entirely
 //   skill: 3               # 1 (too young to die) .. 5 (nightmare)
 //   confirm_unlock: true   # ask (Y/N) before unlocking a lock or opening a door cover
+//   flies: true            # HouseFly brains walk the level (shoot one: it gets loomed)
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
@@ -195,6 +196,7 @@ class HouseWadCard extends HTMLElement {
         actions: this.actions,
         rules: this.config.rules || {},
         confirmUnlock: this.config.confirm_unlock !== false,
+        flies: this.config.flies,
         onConfirm: (pending) => {
           const box = this.shadowRoot.querySelector('.confirm');
           if (box) box.classList.toggle('on', pending);

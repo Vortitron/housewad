@@ -23,7 +23,19 @@ async function run(mode, query = '') {
   // Real mode.
   let t = await run('real');
   let m = await t.mon();
-  assert.deepStrictEqual(Object.keys(m).sort(), ['caco:binary_sensor.bedroom_window', 'soul:light.desk', 'soul:light.kitchen_ceiling', 'vac:vacuum.roborock', 'zombie:switch.tv_plug']);
+  assert.deepStrictEqual(Object.keys(m).sort(), ['caco:binary_sensor.bedroom_window', 'fly:test_fly', 'soul:light.desk', 'soul:light.kitchen_ceiling', 'vac:vacuum.roborock', 'zombie:switch.tv_plug']);
+  // The fly walks where its heading points.
+  const flyPos = () => t.page.evaluate(() => { const l = window.card.link; const o = l.out; l.m._hw_slot_pos(l.monsters.get('fly:test_fly').slot, o); return [l.m.HEAP32[o >> 2], l.m.HEAP32[(o >> 2) + 1]]; });
+  const p0 = await flyPos();
+  await t.page.waitForTimeout(2500);
+  const p1 = await flyPos();
+  console.log('fly moved', p0, '->', p1);
+  assert.ok(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) > 16, 'the fly walks');
+  // Shooting it looms the real fly; it escapes.
+  await t.hit('fly:test_fly', 20);
+  await t.page.waitForTimeout(800);
+  assert.ok((await t.calls()).includes('fly_house.loom sensor.test_fly_mode'), 'loomed');
+  assert.strictEqual(await t.state('sensor.test_fly_mode'), 'escape');
   assert.ok(m['vac:vacuum.roborock'].dormant, 'docked vacuum sleeps');
   await t.hit('soul:light.desk', 1000);
   await t.hit('zombie:switch.tv_plug', 1000);

@@ -18,6 +18,7 @@ struct line_s;
 
 // mobj->hw_flags
 #define HW_DORMANT 1 // ignores the player until hurt (a docked vacuum)
+#define HW_PUPPET 2  // steered from JavaScript (a fly brain), never attacks
 
 // Events sent to JavaScript: Module.hwEvent(type, a, b, c)
 enum
@@ -30,6 +31,7 @@ enum
     HW_EV_USE = 6,    // a: line index, b: special, c: line tag
     HW_EV_SHOOT_LINE = 7, // a: line index, b: special, c: line tag
     HW_EV_CONFIRM = 8, // a: token, b: 1 for yes
+    HW_EV_HURT = 9,    // a: slot, b: damage, c: 1 if the player did it (puppets only)
 };
 
 boolean HW_IsHouseSpecial(int special);
@@ -41,5 +43,6 @@ void HW_OnShootLine(struct mobj_s *thing, struct line_s *line);
 void HW_ResetLevel(void);
 void HW_LevelReady(int map);
 void HW_Fatal(const char *message);
+void HW_PuppetChase(struct mobj_s *actor);
 
 #endif

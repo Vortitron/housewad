@@ -9,7 +9,7 @@
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
 
-const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8 };
+const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9 };
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4 };
 
 const MONSTER_SLOT_BASE = 2000;
@@ -44,7 +44,7 @@ const isOn = (st) => !!st && st.state === 'on';
 const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
 
 export class HouseLink {
-  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, onConfirm, log }) {
+  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, onConfirm, log }) {
     this.engine = engine;
     this.m = engine.module;
     this.manifest = manifest;
@@ -53,6 +53,7 @@ export class HouseLink {
     this.rules = { ...DEFAULT_RULES, ...rules };
     this.log = log || (() => {});
     this.confirmUnlock = confirmUnlock;
+    this.fliesOn = flies !== false;
     this.onConfirm = onConfirm || (() => {});
     this.confirms = new Map();
     this.nextConfirm = 1;
@@ -63,7 +64,7 @@ export class HouseLink {
     this.nextSlot = MONSTER_SLOT_BASE;
     this.currentRoom = null;
     this.type = {};
-    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon'])
+    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron'])
       this.type[name] = this.m.ccall('hw_type', 'number', ['string'], [name]);
 
     this.roomInfo = new Map(manifest.rooms.map((r) => [r.id, r]));
@@ -119,6 +120,8 @@ export class HouseLink {
           return this._lineShot(a);
         case EV.CONFIRM:
           return this._confirmed(a, b === 1);
+        case EV.HURT:
+          return this._monsterHurt(a, b, c === 1);
         default:
           return undefined;
       }
@@ -159,6 +162,7 @@ export class HouseLink {
     if (!this.ready) return false;
     const p = this.player();
     if (!p || !p.alive) return false;
+    if (this._feedNearFly(p)) return true;
     let best = null;
     for (const [slot, lamp] of this.lampSlot) {
       const dx = lamp.x - p.x;
@@ -182,6 +186,57 @@ export class HouseLink {
       this.message(`${best.lamp.entity} is not on the allowlist`);
     }
     return true;
+  }
+
+  // Flies -------------------------------------------------------------------
+
+  _flyFor(slot) {
+    const key = this.slotKey.get(slot);
+    const mon = key && this.monsters.get(key);
+    return mon && mon.spec.fly ? mon : null;
+  }
+
+  // Shooting a fly monster looms the real fly: its escape neurons fire, and
+  // it learns to dislike where it was standing.
+  _monsterHurt(slot, damage, byPlayer) {
+    const mon = this._flyFor(slot);
+    if (!mon || !byPlayer) return;
+    const fly = mon.spec.fly;
+    const strength = Math.round(Math.max(0.2, Math.min(3, 0.4 + damage / 20)) * 10) / 10;
+    const r = this.actions.call(fly.mode, 'loom', { strength }, 'fly_house', true);
+    if (r.ok) this.message(`${fly.name}: loomed (${strength}). Escape neurons firing.`);
+  }
+
+  _feedNearFly(p) {
+    for (const mon of this.monsters.values()) {
+      if (!mon.spec.fly || this.m._hw_slot_state(mon.slot) !== 1) continue;
+      if (!this.m._hw_slot_pos(mon.slot, this.out)) continue;
+      const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+      if (Math.hypot(v[0] - p.x, v[1] - p.y) > 120) continue;
+      const fly = mon.spec.fly;
+      const r = this.actions.call(fly.mode, 'feed', { amount: 1 }, 'fly_house', true);
+      if (r.ok) this.message(`${fly.name}: fed. Dopamine.`);
+      return true;
+    }
+    return false;
+  }
+
+  // Walk each fly monster the way its brain is heading. Escaping flies bolt
+  // away from the player instead.
+  _steerFlies() {
+    const p = this.player();
+    for (const mon of this.monsters.values()) {
+      if (!mon.spec.fly || this.m._hw_slot_state(mon.slot) !== 1) continue;
+      const fly = mon.spec.fly;
+      const mode = this.actions.state(fly.mode)?.state;
+      let heading = parseFloat(this.actions.state(fly.heading)?.state) || 0;
+      let speed = { walk: 8, forage: 10, escape: 20 }[mode] || 0;
+      if (mode === 'escape' && p && this.m._hw_slot_pos(mon.slot, this.out)) {
+        const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+        heading = (Math.atan2(v[1] - p.y, v[0] - p.x) * 180) / Math.PI;
+      }
+      this.m._hw_puppet(mon.slot, 1, Math.round(heading), speed);
+    }
   }
 
   _lineUsed(line) {
@@ -329,6 +384,24 @@ export class HouseLink {
       room.climates.some((c) => a.state(c.entity_id)?.attributes?.hvac_action === 'heating'),
     );
 
+    // Fruit-fly brains, each walking an arachnotron (a brain on legs).
+    if (this.fliesOn) {
+      const rooms = this.manifest.rooms.filter((r) => r.spawns.length);
+      for (const fly of this.house.flies || []) {
+        if (!rooms.length) break;
+        let h = 0;
+        for (const ch of fly.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        want.set(`fly:${fly.id}`, {
+          type: 'arachnotron',
+          room: rooms[h % rooms.length].id,
+          fly,
+          label: `${fly.name}: a fruit-fly brain on legs`,
+          respawn: 20000,
+          onKill: () => this.message(`${fly.name} is a connectome. You can't shoot a connectome.`),
+        });
+      }
+    }
+
     for (const room of this.house.rooms) {
       const info = this.roomInfo.get(room.id);
       if (!info) continue;
@@ -436,6 +509,10 @@ export class HouseLink {
   _spotFor(spec, key) {
     const info = this.roomInfo.get(spec.room);
     if (!info) return null;
+    if (spec.type === 'arachnotron') {
+      // 128 units across: only the middle of a room is clear of the walls.
+      return [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
+    }
     if (spec.near) {
       const cx = (info.bbox.x1 + info.bbox.x2) / 2;
       const cy = (info.bbox.y1 + info.bbox.y2) / 2;
@@ -547,6 +624,7 @@ export class HouseLink {
       this._spawnMonster(key, spec, !instant);
       alive++;
     }
+    this._steerFlies();
   }
 
   // Called a few times a second: room announcements.
