@@ -17,6 +17,7 @@
 //	Switches, buttons. Two-state animation. Exits.
 //
 
+#include "hw_house.h" // housewad
 #include <stdio.h>
 
 #include "i_system.h"
@@ -272,6 +273,14 @@ P_UseSpecialLine
   line_t*	line,
   int		side )
 {               
+
+    // housewad: house lines work from either side, for the player only.
+    if (HW_IsHouseSpecial(line->special))
+    {
+	if (thing->player)
+	    HW_OnUseLine(thing, line);
+	return true;
+    }
 
     // Err...
     // Use the back sides of VERY SPECIAL lines...

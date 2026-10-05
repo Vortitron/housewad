@@ -16,6 +16,7 @@
 //	Moving object handling. Spawn functions.
 //
 
+#include "hw_house.h" // housewad
 #include <stdio.h>
 
 #include "i_system.h"
@@ -571,6 +572,9 @@ int		iquetail;
 
 void P_RemoveMobj (mobj_t* mobj)
 {
+    if (mobj->hw_slot)
+	HW_OnRemove(mobj); // housewad
+
     if ((mobj->flags & MF_SPECIAL)
 	&& !(mobj->flags & MF_DROPPED)
 	&& (mobj->type != MT_INV)

@@ -1,0 +1,533 @@
+// The live link between a running level and the house.
+//
+// House -> game: room light levels follow the real lights, lamps light up,
+// switches and screens show their state, doors open and close, and the
+// house's problems turn up as monsters.
+// Game -> house: shooting, using and killing things become service calls,
+// through HouseActions (allowlist, rate limits, practice mode).
+
+import { friendlyName } from './model.js';
+import { SPECIAL } from './mapgen.js';
+
+const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7 };
+const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4 };
+
+const MONSTER_SLOT_BASE = 2000;
+const MAX_MONSTERS = 14;
+const MAX_IMPS = 6;
+
+export const DEFAULT_RULES = {
+  empty_minutes: 10, // a light on in a room nobody has been in for this long is wasted
+  standby_min: 0.3, // watts: below this a switched-on plug is really idle
+  standby_max: 15, // watts: above this it is doing something useful
+};
+
+// Doom's HUD font has capitals and ASCII punctuation only.
+export function hudText(s) {
+  return String(s)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\x20-\x7e]/g, '')
+    .toUpperCase()
+    .slice(0, 100);
+}
+
+const isOn = (st) => !!st && st.state === 'on';
+const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
+
+export class HouseLink {
+  constructor({ engine, manifest, house, actions, rules = {}, log }) {
+    this.engine = engine;
+    this.m = engine.module;
+    this.manifest = manifest;
+    this.house = house;
+    this.actions = actions;
+    this.rules = { ...DEFAULT_RULES, ...rules };
+    this.log = log || (() => {});
+    this.ready = false;
+    this.out = this.m._malloc(8 * 4);
+    this.monsters = new Map(); // key -> { slot, alive, killedAt, dormant, spot }
+    this.slotKey = new Map(); // slot -> key
+    this.nextSlot = MONSTER_SLOT_BASE;
+    this.currentRoom = null;
+    this.type = {};
+    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon'])
+      this.type[name] = this.m.ccall('hw_type', 'number', ['string'], [name]);
+
+    this.roomInfo = new Map(manifest.rooms.map((r) => [r.id, r]));
+    this.houseRoom = new Map(house.rooms.map((r) => [r.id, r]));
+    this.lampSlot = new Map(manifest.lamps.map((l, i) => [i + 1, l]));
+    this.lines = new Map(Object.entries(manifest.lines).map(([k, v]) => [Number(k), v]));
+    this.doorById = new Map(manifest.doors.map((d) => [d.id, d]));
+  }
+
+  close() {
+    this.ready = false;
+    this.m._free(this.out);
+  }
+
+  // Engine calls ------------------------------------------------------------
+
+  message(text) {
+    this.m.ccall('hw_message', null, ['string'], [hudText(text)]);
+  }
+
+  sound(name, sector = -1) {
+    this.m.ccall('hw_sound', null, ['string', 'number'], [name, sector]);
+  }
+
+  lineTexture(line, name) {
+    this.m.ccall('hw_line_texture', null, ['number', 'number', 'number', 'string'], [line, 0, 0, name]);
+  }
+
+  player() {
+    if (!this.m._hw_player(this.out)) return null;
+    const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 6);
+    return { x: v[0], y: v[1], angle: v[2], sector: v[3], health: v[4], alive: v[5] === 1 };
+  }
+
+  // Events from the engine ----------------------------------------------------
+
+  onEvent(type, a, b, c) {
+    try {
+      switch (type) {
+        case EV.LEVEL:
+          return this._levelReady();
+        case EV.SHOT:
+          return this._lampShot(a, c === 1);
+        case EV.WAKE:
+          return this._monsterWoken(a, c === 1);
+        case EV.KILL:
+          return this._monsterKilled(a, c === 1);
+        case EV.GONE:
+          return this._slotGone(a);
+        case EV.USE:
+          return this._lineUsed(a);
+        case EV.SHOOT_LINE:
+          return this._lineShot(a);
+        default:
+          return undefined;
+      }
+    } catch (e) {
+      this.log(`house event ${type} failed: ${e && e.stack}`);
+      return undefined;
+    }
+  }
+
+  _levelReady() {
+    this.ready = true;
+    this.monsters.clear();
+    this.slotKey.clear();
+    this.currentRoom = null;
+    for (const [slot, lamp] of this.lampSlot) {
+      this.m._hw_spawn(slot, this.type.lamp, lamp.x, lamp.y, 0, 0);
+    }
+    this.sync({ instant: true });
+  }
+
+  _lampShot(slot, byPlayer) {
+    const lamp = this.lampSlot.get(slot);
+    if (!lamp || !byPlayer) return;
+    const st = this.actions.state(lamp.entity);
+    if (!isOn(st)) return;
+    const r = this.actions.call(lamp.entity, 'turn_off');
+    if (r.ok) {
+      this.m._hw_set_lamp(slot, 0);
+      this.message(`${friendlyName(this._hass(), lamp.entity)}: off`);
+    } else if (r.reason === 'not-allowed') {
+      this.message(`${lamp.entity} is not on the allowlist`);
+    }
+  }
+
+  // Use near a lamp switches it on (Doom can only "use" walls, so the card
+  // asks this when the use key goes down).
+  useNearLamp() {
+    if (!this.ready) return false;
+    const p = this.player();
+    if (!p || !p.alive) return false;
+    let best = null;
+    for (const [slot, lamp] of this.lampSlot) {
+      const dx = lamp.x - p.x;
+      const dy = lamp.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 128) continue;
+      let diff = Math.abs(((Math.atan2(dy, dx) * 180) / Math.PI - p.angle + 540) % 360 - 180);
+      if (diff > 35) continue;
+      if (!best || dist < best.dist) best = { slot, lamp, dist };
+    }
+    if (!best) return false;
+    const st = this.actions.state(best.lamp.entity);
+    const service = isOn(st) ? 'turn_off' : 'turn_on';
+    const r = this.actions.call(best.lamp.entity, service);
+    const name = friendlyName(this._hass(), best.lamp.entity);
+    if (r.ok) {
+      this.m._hw_set_lamp(best.slot, service === 'turn_on' ? 1 : 0);
+      this.sound('swtchn');
+      this.message(`${name}: ${service === 'turn_on' ? 'on' : 'off'}`);
+    } else if (r.reason === 'not-allowed') {
+      this.message(`${best.lamp.entity} is not on the allowlist`);
+    }
+    return true;
+  }
+
+  _lineUsed(line) {
+    const ref = this.lines.get(line);
+    if (!ref) return;
+    if (ref.kind === 'switch') {
+      const r = this.actions.call(ref.entity, 'toggle');
+      this._report(ref.entity, r, () => {
+        const on = !isOn(this.actions.state(ref.entity));
+        this.lineTexture(line, on ? 'SW2COMP' : 'SW1COMP');
+        this.sound('swtchn');
+        return on ? 'on' : 'off';
+      });
+    } else if (ref.kind === 'media') {
+      const r = this.actions.call(ref.entity, 'media_play_pause');
+      this._report(ref.entity, r, () => {
+        this.sound('swtchn');
+        return this.actions.state(ref.entity)?.state === 'playing' ? 'pause' : 'play';
+      });
+    } else if (ref.kind === 'door') {
+      this._doorUsed(this.doorById.get(ref.door));
+    }
+  }
+
+  _lineShot(line) {
+    const ref = this.lines.get(line);
+    if (!ref) return;
+    if (ref.kind === 'switch' && isOn(this.actions.state(ref.entity))) {
+      const r = this.actions.call(ref.entity, 'turn_off');
+      this._report(ref.entity, r, () => {
+        this.lineTexture(line, 'SW1COMP');
+        return 'off';
+      });
+    } else if (ref.kind === 'media') {
+      const st = this.actions.state(ref.entity);
+      if (!st || st.state === 'off' || st.attributes.is_volume_muted) return;
+      const r = this.actions.call(ref.entity, 'volume_mute', { is_volume_muted: true });
+      this._report(ref.entity, r, () => 'muted');
+    }
+  }
+
+  _report(entityId, r, applied) {
+    const name = friendlyName(this._hass(), entityId);
+    if (r.ok) this.message(`${name}: ${applied()}`);
+    else if (r.reason === 'not-allowed') {
+      this.sound('noway');
+      this.message(`${entityId} is not on the allowlist`);
+    }
+  }
+
+  _doorUsed(door) {
+    if (!door) return;
+    const a = this.actions;
+    const lock = door.lock && a.state(door.lock);
+    const cover = door.cover && a.state(door.cover);
+    const sensorOpen = isOn(door.sensor && a.state(door.sensor));
+    if (door.cover) {
+      const open = cover && ['open', 'opening'].includes(cover.state);
+      return this._doorCall(door, door.cover, open ? 'close_cover' : 'open_cover', open ? 'closing' : 'opening');
+    }
+    if (door.lock) {
+      const unlocked = lock && ['unlocked', 'open', 'unlocking', 'opening'].includes(lock.state);
+      if (unlocked && sensorOpen) {
+        this.sound('noway');
+        return this.message(`${door.name} is open. Close it first.`);
+      }
+      return this._doorCall(door, door.lock, unlocked ? 'lock' : 'unlock', unlocked ? 'locking' : 'unlocking');
+    }
+    this.sound('noway');
+    return this.message(`${door.name} is a real door. Go and open it.`);
+  }
+
+  _doorCall(door, entityId, service, doing) {
+    const r = this.actions.call(entityId, service);
+    if (r.ok) return this.message(`${door.name}: ${doing}...`);
+    if (r.reason === 'not-allowed') {
+      this.sound('noway');
+      return this.message(door.lock ? `${door.name} is locked. You need the real key.` : `${door.name} is not on the allowlist`);
+    }
+    return undefined;
+  }
+
+  // Monsters -----------------------------------------------------------------
+
+  _monsterWoken(slot, byPlayer) {
+    const key = this.slotKey.get(slot);
+    const mon = key && this.monsters.get(key);
+    if (!mon) return;
+    mon.dormant = false;
+    mon.wokenAt = Date.now();
+    if (mon.spec.onWake && byPlayer) mon.spec.onWake();
+  }
+
+  _monsterKilled(slot, byPlayer) {
+    const key = this.slotKey.get(slot);
+    const mon = key && this.monsters.get(key);
+    if (!mon) return;
+    mon.alive = false;
+    mon.killedAt = Date.now();
+    if (byPlayer && mon.spec.onKill) mon.spec.onKill();
+  }
+
+  _slotGone(slot) {
+    const key = this.slotKey.get(slot);
+    if (!key) return;
+    const mon = this.monsters.get(key);
+    if (mon && mon.slot === slot) this.monsters.delete(key);
+    this.slotKey.delete(slot);
+  }
+
+  // What the house says should be roaming the level right now.
+  wantedMonsters() {
+    const a = this.actions;
+    const hass = this._hass();
+    const want = new Map();
+    const r = this.rules;
+    let imps = 0;
+    const heatingAnywhere = this.house.rooms.some((room) =>
+      room.climates.some((c) => a.state(c.entity_id)?.attributes?.hvac_action === 'heating'),
+    );
+
+    for (const room of this.house.rooms) {
+      const info = this.roomInfo.get(room.id);
+      if (!info) continue;
+      const presence = room.presence.map((p) => a.state(p.entity_id)).filter(Boolean);
+      const occupied = presence.some(isOn);
+      const emptyFor = presence.length ? Math.min(...presence.map(ago)) : 0;
+
+      // Lights left on in a room nobody has been in for a while.
+      if (presence.length && !occupied && emptyFor >= r.empty_minutes * 60000) {
+        for (const light of room.lights) {
+          if (!isOn(a.state(light.entity_id))) continue;
+          const lamp = this.manifest.lamps.find((l) => l.entity === light.entity_id);
+          want.set(`soul:${light.entity_id}`, {
+            type: 'lostsoul',
+            room: room.id,
+            near: lamp ? [lamp.x, lamp.y] : null,
+            label: `Wasted light: ${friendlyName(hass, light.entity_id)}`,
+            respawn: 20000,
+            onKill: () => this._killAction(light.entity_id, 'turn_off', 'off'),
+          });
+        }
+      }
+
+      // Plugs switched on but only drawing standby power.
+      for (const sw of room.switches) {
+        if (!sw.power || !isOn(a.state(sw.entity_id))) continue;
+        const watts = parseFloat(a.state(sw.power)?.state);
+        if (!(watts >= r.standby_min && watts <= r.standby_max)) continue;
+        want.set(`zombie:${sw.entity_id}`, {
+          type: 'zombieman',
+          room: room.id,
+          label: `Standby hog: ${friendlyName(hass, sw.entity_id)} (${watts} W)`,
+          respawn: 20000,
+          onKill: () => this._killAction(sw.entity_id, 'turn_off', 'off'),
+        });
+      }
+
+      // Somebody is in the room.
+      for (const p of room.presence) {
+        if (imps >= MAX_IMPS || !isOn(a.state(p.entity_id))) continue;
+        imps++;
+        want.set(`imp:${p.entity_id}`, {
+          type: 'imp',
+          room: room.id,
+          label: `Movement in the ${room.name}`,
+          onKill: () => this.message(`That was only movement in the ${room.name}. It'll be back.`),
+        });
+      }
+
+      // A window open while the heating runs.
+      const heating =
+        room.climates.length > 0
+          ? room.climates.some((c) => a.state(c.entity_id)?.attributes?.hvac_action === 'heating')
+          : heatingAnywhere;
+      for (const w of room.windows) {
+        if (!heating || !isOn(a.state(w.entity_id))) continue;
+        want.set(`caco:${w.entity_id}`, {
+          type: 'cacodemon',
+          room: room.id,
+          label: `${friendlyName(hass, w.entity_id)} open with the heating on`,
+          onKill: () => this.message(`Now go and close ${friendlyName(hass, w.entity_id)} yourself.`),
+        });
+      }
+
+      // The robot vacuum: asleep on its dock, a demon when it cleans.
+      for (const v of room.vacuums) {
+        const st = a.state(v.entity_id);
+        const cleaning = !!st && ['cleaning', 'on'].includes(st.state);
+        want.set(`vac:${v.entity_id}`, {
+          type: 'demon',
+          room: room.id,
+          dormant: !cleaning,
+          vacuum: true,
+          label: friendlyName(hass, v.entity_id),
+          onWake: () => {
+            const res = this.actions.call(v.entity_id, 'start');
+            if (res.ok) this.message(`You woke the ${friendlyName(hass, v.entity_id)}.`);
+          },
+          onKill: () => this._killAction(v.entity_id, 'return_to_base', 'sent home'),
+        });
+      }
+    }
+    return want;
+  }
+
+  _killAction(entityId, service, done) {
+    const r = this.actions.call(entityId, service);
+    const name = friendlyName(this._hass(), entityId);
+    if (r.ok) this.message(`${name}: ${done}`);
+    else if (r.reason === 'not-allowed') this.message(`${entityId} is not on the allowlist`);
+  }
+
+  _spawnMonster(key, spec, fog) {
+    let slot = this.monsters.get(key)?.slot;
+    if (!slot) slot = this.nextSlot++;
+    const spot = this._spotFor(spec, key);
+    if (!spot) return;
+    const flags = (fog ? SPAWN.FOG : 0) | (spec.dormant ? SPAWN.DORMANT : 0);
+    if (!this.m._hw_spawn(slot, this.type[spec.type], spot[0], spot[1], 90, flags)) return;
+    this.slotKey.set(slot, key);
+    this.monsters.set(key, { slot, alive: true, killedAt: 0, dormant: !!spec.dormant, spec, spot });
+    if (fog && spec.label && !spec.dormant) this.message(spec.label);
+  }
+
+  _spotFor(spec, key) {
+    const info = this.roomInfo.get(spec.room);
+    if (!info) return null;
+    if (spec.near) {
+      const cx = (info.bbox.x1 + info.bbox.x2) / 2;
+      const cy = (info.bbox.y1 + info.bbox.y2) / 2;
+      const d = Math.hypot(cx - spec.near[0], cy - spec.near[1]) || 1;
+      return [Math.round(spec.near[0] + ((cx - spec.near[0]) * 48) / d), Math.round(spec.near[1] + ((cy - spec.near[1]) * 48) / d)];
+    }
+    const taken = new Set([...this.monsters.entries()].filter(([k]) => k !== key).map(([, m]) => m.spot && m.spot.join(',')));
+    const p = this.player();
+    const spots = info.spawns.filter((s) => !taken.has(s.join(',')));
+    if (!spots.length) return info.spawns[0] || null;
+    const far = p ? spots.filter((s) => Math.hypot(s[0] - p.x, s[1] - p.y) > 160) : spots;
+    const pool = far.length ? far : spots;
+    // Stable choice per key so a monster comes back where it was.
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return pool[h % pool.length];
+  }
+
+  // Reconcile ----------------------------------------------------------------
+
+  sync({ instant = false } = {}) {
+    if (!this.ready) return;
+    const a = this.actions;
+    const hass = this._hass();
+
+    // Room light levels follow the room's lights.
+    for (const room of this.house.rooms) {
+      const info = this.roomInfo.get(room.id);
+      if (!info) continue;
+      let level = info.outdoor ? null : 160;
+      if (room.lights.length) {
+        const lit = room.lights.map((l) => a.state(l.entity_id)).filter(isOn);
+        const bright = lit.map((st) => st.attributes.brightness ?? 255);
+        level = lit.length ? 112 + Math.round((Math.max(...bright) * 143) / 255) : 64;
+      }
+      if (info.outdoor || /garden|patio|terrace|balcon|yard|altan|ute/i.test(room.name)) {
+        const sun = hass && hass.states['sun.sun'];
+        const day = !sun || sun.state === 'above_horizon';
+        level = Math.max(level ?? 0, day ? 208 : 72);
+      }
+      for (const s of info.sectors) this.m._hw_sector_light(s, level);
+      if (info.yard !== undefined) {
+        const sun = hass && hass.states['sun.sun'];
+        this.m._hw_sector_light(info.yard, !sun || sun.state === 'above_horizon' ? 208 : 72);
+      }
+    }
+
+    // Lamps, switches, screens.
+    for (const [slot, lamp] of this.lampSlot) this.m._hw_set_lamp(slot, isOn(a.state(lamp.entity)) ? 1 : 0);
+    for (const [line, ref] of this.lines) {
+      const st = a.state(ref.entity);
+      if (ref.kind === 'switch') this.lineTexture(line, isOn(st) ? 'SW2COMP' : 'SW1COMP');
+      if (ref.kind === 'media') this.lineTexture(line, st && ['playing', 'on', 'paused', 'idle'].includes(st.state) ? 'COMPSTA1' : 'COMPSTA2');
+    }
+
+    // Doors open when the real door is open, unlocked, or the cover is up.
+    for (const door of this.manifest.doors) {
+      const open =
+        isOn(door.sensor && a.state(door.sensor)) ||
+        (door.lock && ['unlocked', 'open', 'opening'].includes(a.state(door.lock)?.state)) ||
+        (door.cover && ['open', 'opening'].includes(a.state(door.cover)?.state));
+      const now = this.m._hw_door_state(door.sector);
+      if (now === 2) continue;
+      if ((now === 1) !== !!open) this.m._hw_door(door.sector, open ? 1 : 0, instant ? 1 : 0);
+    }
+
+    this._syncMonsters(instant);
+  }
+
+  _syncMonsters(instant) {
+    const want = this.wantedMonsters();
+    const now = Date.now();
+
+    for (const [key, mon] of [...this.monsters]) {
+      const spec = want.get(key);
+      const state = this.m._hw_slot_state(mon.slot);
+      if (!spec) {
+        // The problem went away: an alive monster vanishes; corpses stay.
+        if (state === 1) this.m._hw_remove(mon.slot, 1);
+        this.monsters.delete(key);
+        this.slotKey.delete(mon.slot);
+        continue;
+      }
+      if (spec.vacuum) {
+        if (state === 1 && spec.dormant && !mon.dormant && now - (mon.wokenAt || 0) > 15000) {
+          // Gone back to the dock (or never left it): back to sleep.
+          this.m._hw_remove(mon.slot, 1);
+          this.monsters.delete(key);
+        } else if (state === 1 && !spec.dormant && mon.dormant) {
+          this.m._hw_set_dormant(mon.slot, 0);
+          mon.dormant = false;
+        } else if (state !== 1 && spec.dormant && now - mon.killedAt > 5000) {
+          this.monsters.delete(key);
+        }
+        continue;
+      }
+      if (state !== 1 && spec.respawn && now - mon.killedAt > spec.respawn) {
+        // Killed, but the house did not change: it comes back.
+        this.monsters.delete(key);
+      }
+    }
+
+    let alive = [...this.monsters.values()].filter((m) => this.m._hw_slot_state(m.slot) === 1).length;
+    for (const [key, spec] of want) {
+      if (this.monsters.has(key) || alive >= MAX_MONSTERS) continue;
+      this._spawnMonster(key, spec, !instant);
+      alive++;
+    }
+  }
+
+  // Called a few times a second: room announcements.
+  tick() {
+    if (!this.ready) return;
+    const p = this.player();
+    if (!p) return;
+    const room = this.manifest.sectorRoom[p.sector];
+    const id = room ? room.id : null;
+    if (id && id !== this.currentRoom) {
+      this.currentRoom = id;
+      const house = this.houseRoom.get(id);
+      let text = room.name;
+      if (house && house.lights.length) {
+        const on = house.lights.filter((l) => isOn(this.actions.state(l.entity_id))).length;
+        text += ` - ${on} of ${house.lights.length} lights on`;
+      }
+      this.message(text);
+    }
+  }
+
+  _hass() {
+    return this.actions.getHass();
+  }
+}
+
+export { SPECIAL };

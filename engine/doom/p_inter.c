@@ -20,6 +20,7 @@
 
 
 // Data.
+#include "hw_house.h" // housewad
 #include "doomdef.h"
 #include "dstrings.h"
 #include "sounds.h"
@@ -670,6 +671,9 @@ P_KillMobj
     mobjtype_t	item;
     mobj_t*	mo;
 	
+    if (target->hw_slot)
+	HW_OnKill(source, target); // housewad
+
     target->flags &= ~(MF_SHOOTABLE|MF_FLOAT|MF_SKULLFLY);
 
     if (target->type != MT_SKULL)
@@ -792,6 +796,10 @@ P_DamageMobj
 	return;	// shouldn't happen...
 		
     if (target->health <= 0)
+	return;
+
+    // housewad: house objects decide for themselves what a hit means.
+    if (target->hw_slot && HW_OnDamage(target, inflictor, source, damage))
 	return;
 
     if ( target->flags & MF_SKULLFLY )

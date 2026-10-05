@@ -18,6 +18,7 @@
 //	that are associated with states/frames. 
 //
 
+#include "hw_house.h" // housewad
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -589,6 +590,11 @@ void A_KeenDie (mobj_t* mo)
 void A_Look (mobj_t* actor)
 {
     mobj_t*	targ;
+
+    // housewad: a dormant house monster (the docked vacuum) ignores the player
+    // until something hurts it.
+    if (actor->hw_flags & HW_DORMANT)
+	return;
 	
     actor->threshold = 0;	// any shot will wake up
     targ = actor->subsector->sector->soundtarget;

@@ -66,7 +66,7 @@ export class DoomEngine {
 
   // engineFactory: the createHouseWadEngine export of housewad-engine.js.
   // files: { 'name.wad': Uint8Array } written into the engine's filesystem.
-  static async start({ engineFactory, wasmUrl, canvas, files, args, onHouseEvent, onExit, print }) {
+  static async start({ engineFactory, wasmUrl, canvas, files, args, onHouseEvent, onExit, onFatal, print }) {
     let engine = null;
     const module = await engineFactory({
       locateFile: (path, prefix) => (path.endsWith('.wasm') && wasmUrl ? wasmUrl : prefix + path),
@@ -80,6 +80,10 @@ export class DoomEngine {
       hwSoundPlaying: (channel) => engine && engine.sound.playing(channel),
       hwEvent: (...a) => onHouseEvent && onHouseEvent(...a),
       quit: (status) => onExit && onExit(status),
+      hwFatal: (message) => {
+        if (engine) engine.stopped = true;
+        if (onFatal) onFatal(message);
+      },
     });
     engine = new DoomEngine(module, canvas);
     for (const [name, bytes] of Object.entries(files)) module.FS.writeFile(name, bytes);

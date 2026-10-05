@@ -1091,7 +1091,9 @@ state_t	states[NUMSTATES] = {
     {SPR_TLP2,32768,4,{NULL},S_TECH2LAMP2,0,0},	// S_TECH2LAMP
     {SPR_TLP2,32769,4,{NULL},S_TECH2LAMP3,0,0},	// S_TECH2LAMP2
     {SPR_TLP2,32770,4,{NULL},S_TECH2LAMP4,0,0},	// S_TECH2LAMP3
-    {SPR_TLP2,32771,4,{NULL},S_TECH2LAMP,0,0}	// S_TECH2LAMP4
+    {SPR_TLP2,32771,4,{NULL},S_TECH2LAMP,0,0},	// S_TECH2LAMP4
+    {SPR_COLU,32768,-1,{NULL},S_NULL,0,0},	// S_HW_LAMP_ON (housewad)
+    {SPR_COLU,0,-1,{NULL},S_NULL,0,0},	// S_HW_LAMP_OFF (housewad)
 };
 
 
@@ -4656,6 +4658,32 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
 	0,		// damage
 	sfx_None,		// activesound
 	MF_NOBLOCKMAP,		// flags
+	S_NULL		// raisestate
+    },
+
+    {		// MT_HW_LAMP (housewad: a real light; shooting it turns it off)
+	-1,		// doomednum
+	S_HW_LAMP_ON,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	16*FRACUNIT,		// radius
+	48*FRACUNIT,		// height
+	100,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_SOLID|MF_SHOOTABLE|MF_NOBLOOD,		// flags
 	S_NULL		// raisestate
     }
 };

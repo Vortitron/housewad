@@ -1,0 +1,25 @@
+{
+  "floors": [
+    { "id": "ground", "name": "Ground floor", "level": 0 },
+    { "id": "upstairs", "name": "Upstairs", "level": 1 }
+  ],
+  "rooms": [
+    { "id": "hallway", "name": "Hallway", "floor": "ground",
+      "lights": [{ "entity_id": "light.hallway" }], "switches": [], "media": [],
+      "doors": [{ "id": "front_door", "name": "Front Door", "lock": "lock.front_door", "sensor": "binary_sensor.front_door" }] },
+    { "id": "kitchen", "name": "Kitchen", "floor": "ground",
+      "lights": [{ "entity_id": "light.kitchen_ceiling" }, { "entity_id": "light.kitchen_island" }],
+      "switches": [{ "entity_id": "switch.kettle" }, { "entity_id": "switch.coffee" }], "media": [], "doors": [] },
+    { "id": "living_room", "name": "Living Room", "floor": "ground",
+      "lights": [{ "entity_id": "light.floor_lamp" }, { "entity_id": "light.sofa" }, { "entity_id": "light.ceiling" }],
+      "switches": [{ "entity_id": "switch.tv_plug" }], "media": [{ "entity_id": "media_player.tv" }], "doors": [] },
+    { "id": "garage", "name": "Garage", "floor": "ground",
+      "lights": [{ "entity_id": "light.garage" }], "switches": [], "media": [],
+      "doors": [{ "id": "garage_door", "name": "Garage Door", "cover": "cover.garage_door" }] },
+    { "id": "garden", "name": "Garden", "floor": "ground", "lights": [{ "entity_id": "light.garden" }], "switches": [], "media": [], "doors": [] },
+    { "id": "bedroom", "name": "Bedroom", "floor": "upstairs",
+      "lights": [{ "entity_id": "light.bedside" }], "switches": [], "media": [{ "entity_id": "media_player.bedroom_speaker" }], "doors": [] },
+    { "id": "bathroom", "name": "Bathroom", "floor": "upstairs", "lights": [{ "entity_id": "light.bathroom" }], "switches": [{ "entity_id": "switch.towel_rail" }], "media": [], "doors": [] },
+    { "id": "office", "name": "Office", "floor": "upstairs", "lights": [{ "entity_id": "light.desk" }], "switches": [{ "entity_id": "switch.monitor" }], "media": [], "doors": [] }
+  ]
+}

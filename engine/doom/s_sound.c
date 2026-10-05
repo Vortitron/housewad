@@ -634,7 +634,14 @@ void S_ChangeMusic(int musicnum, int looping)
     if (!music->lumpnum)
     {
         M_snprintf(namebuf, sizeof(namebuf), "d_%s", DEH_String(music->name));
-        music->lumpnum = W_GetNumForName(namebuf);
+        music->lumpnum = W_CheckNumForName(namebuf);
+    }
+
+    // housewad: the trimmed IWAD has no music.
+    if (music->lumpnum < 0)
+    {
+        music->lumpnum = 0;
+        return;
     }
 
     music->data = W_CacheLumpNum(music->lumpnum, PU_STATIC);

@@ -21,6 +21,7 @@
 //
 
 
+#include "hw_house.h" // housewad
 #include <stdlib.h>
 
 #include "doomdef.h"
@@ -971,6 +972,14 @@ P_ShootSpecialLine
   line_t*	line )
 {
     int		ok;
+
+    // housewad: the player shooting a house line.
+    if (HW_IsHouseSpecial(line->special))
+    {
+	if (thing->player)
+	    HW_OnShootLine(thing, line);
+	return;
+    }
     
     //	Impacts that other things can activate.
     if (!thing->player)

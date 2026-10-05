@@ -17,6 +17,7 @@
 
 
 
+#include "hw_house.h" // housewad
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -388,6 +389,12 @@ void I_Error (char *error, ...)
     memset(msgbuf, 0, sizeof(msgbuf));
     M_vsnprintf(msgbuf, sizeof(msgbuf), error, argptr);
     va_end(argptr);
+
+#ifdef __EMSCRIPTEN__
+    // housewad: stop the game and hand the message to the page instead of
+    // running exit handlers written for a desktop.
+    HW_Fatal(msgbuf);
+#endif
 
     // Shutdown. Here might be other errors.
 

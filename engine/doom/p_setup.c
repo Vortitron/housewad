@@ -19,6 +19,7 @@
 
 
 
+#include "hw_house.h" // housewad
 #include <math.h>
 
 #include "z_zone.h"
@@ -766,6 +767,8 @@ P_SetupLevel
     // Make sure all sounds are stopped before Z_FreeTags.
     S_Start ();			
 
+    HW_ResetLevel(); // housewad: every house thing is about to be freed
+
     Z_FreeTags (PU_LEVEL, PU_PURGELEVEL-1);
 
     // UNUSED W_Profile ();
@@ -834,6 +837,8 @@ P_SetupLevel
     // preload graphics
     if (precache)
 	R_PrecacheLevel ();
+
+    HW_LevelReady(map); // housewad: the house can populate the level now
 
     //printf ("free memory: 0x%x\n", Z_FreeMemory());
 

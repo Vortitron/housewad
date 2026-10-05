@@ -1137,6 +1137,8 @@ typedef enum
     S_TECH2LAMP2,
     S_TECH2LAMP3,
     S_TECH2LAMP4,
+    S_HW_LAMP_ON,  // housewad: a real light, switched on
+    S_HW_LAMP_OFF, // housewad: a real light, switched off
     NUMSTATES
 } statenum_t;
 
@@ -1294,6 +1296,7 @@ typedef enum {
     MT_MISC84,
     MT_MISC85,
     MT_MISC86,
+    MT_HW_LAMP, // housewad: a real light
     NUMMOBJTYPES
 
 } mobjtype_t;

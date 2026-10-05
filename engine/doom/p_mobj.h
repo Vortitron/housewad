@@ -276,6 +276,10 @@ typedef struct mobj_s
 
     // Thing being chased/attacked for tracers.
     struct mobj_s*	tracer;	
+
+    // housewad: the house object this thing stands for (0 = none) and its flags.
+    int			hw_slot;
+    int			hw_flags;
     
 } mobj_t;
 

@@ -2106,6 +2106,13 @@ char*	defdemoname;
  
 void G_DeferedPlayDemo (char* name) 
 { 
+    // housewad: the trimmed IWAD has no demos (they need the original maps).
+    if (W_CheckNumForName(name) < 0)
+    {
+        D_AdvanceDemo ();
+        return;
+    }
+
     defdemoname = name; 
     gameaction = ga_playdemo; 
 } 

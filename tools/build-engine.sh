@@ -16,10 +16,10 @@ for src in engine/doom/*.c engine/*.c; do
     OBJS+=("$obj")
 done
 
-emcc -O2 "${OBJS[@]}" -o dist/housewad-engine.js \
+emcc -O2 ${LINK_EXTRA:-} "${OBJS[@]}" -o dist/housewad-engine.js \
     -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createHouseWadEngine \
     -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sALLOW_MEMORY_GROWTH=1 \
     -sINITIAL_MEMORY=64MB -sENVIRONMENT=web,node \
-    -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAPU32,HEAP32,UTF8ToString,stringToUTF8,lengthBytesUTF8 \
+    -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAPU32,HEAP32,UTF8ToString,ccall \
     -sEXPORTED_FUNCTIONS=_main,_malloc,_free
 ls -la dist/housewad-engine.*
