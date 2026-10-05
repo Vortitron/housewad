@@ -146,6 +146,20 @@ floorplan:
   start: { room: hall, at: [1.5, 1.5] }
 ```
 
+More than one storey: Doom can't put a room above another, so each other level sits beside the house, at its own height, and stairs join them. A stair climbs (or drops) a few steps from the room's edge, then teleports you to the matching stairwell on the other level, which you walk out of into the room. To your feet it is one staircase.
+
+```yaml
+  levels:
+    loft: { offset: [0, -9], floor: 2.7 }      # metres: where it sits on the map, how high
+  rooms:
+    - { id: loft, area: loft, level: loft, rects: [[10, 0, 18, 3.5]] }
+  stairs:
+    - name: Stairs to the loft
+      from: { room: living, rect: [14.6, 3.6, 15.6, 4.9], enter: s }   # entered from the room to its south
+      to:   { room: loft,   rect: [14.6, 3.5, 15.6, 4.9], enter: n }
+  anywhere: [residence]    # areas that mean the whole house: their things are spread over the rooms
+```
+
 The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. Sweet Home 3D import is on the way.
 
 ## Building from source

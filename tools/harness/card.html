@@ -2,7 +2,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Card harness</title>
-<style>body { background: #1c1c1c; margin: 0; padding: 16px; } housewad-card { max-width: 820px; margin: 0 auto; }</style>
+<style>body { background: #1c1c1c; margin: 0; padding: 16px; } housewad-card { max-width: 820px; margin: 0 auto; } body.panel { padding: 56px 0 0; } body.panel housewad-card { max-width: none; }</style>
+<script>/* ?panel: full width under a 56px header, like a Lovelace panel view */ if (/[?&]panel\b/.test(location.search)) addEventListener('DOMContentLoaded', () => document.body.classList.add('panel'));</script>
 <housewad-card></housewad-card>
 <script type="module">
 import { makeFakeHass } from './fakehass.js';
@@ -10,7 +11,9 @@ await import('../../dist/housewad-card.js');
 const card = document.querySelector('housewad-card');
 const params = new URLSearchParams(location.search);
 const allow = (params.get('allow') || 'light.*,switch.*,media_player.*,vacuum.*,lock.front_door,cover.garage_door').split(',');
-card.setConfig({ allow, assets_url: '/dist/', rules: { empty_minutes: 10 }, cheats: { IDCOFFEE: 'switch.kettle' }, exit_scene: 'switch.towel_rail' });
+// ?plan=<json file>: build the level from a floor plan instead.
+const floorplan = params.get('plan') ? await (await fetch(params.get('plan'))).json() : undefined;
+card.setConfig({ allow, assets_url: '/dist/', rules: { empty_minutes: 10 }, cheats: { IDCOFFEE: 'switch.kettle' }, exit_scene: 'switch.towel_rail', floorplan });
 window.hass = makeFakeHass((h) => { card.hass = h; window.hass = h; });
 card.hass = window.hass;
 window.card = card;

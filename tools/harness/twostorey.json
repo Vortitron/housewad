@@ -1,0 +1,23 @@
+{
+ "rooms": [
+  { "id": "hall", "area": "hallway", "height": 2.4, "rects": [[0, 0, 4, 3]] },
+  { "id": "kitchen", "area": "kitchen", "height": 2.4, "rects": [[0, 3, 4, 5]] },
+  { "id": "living", "area": "living_room", "height": 2.4, "rects": [[4, 0, 9, 5]] },
+  { "id": "bedroom", "area": "bedroom", "level": "up", "height": 2.4, "rects": [[0, 0, 5, 4]] },
+  { "id": "bathroom", "area": "bathroom", "level": "up", "height": 2.4, "rects": [[5, 0, 8, 4]] },
+  { "id": "garage", "area": "garage", "level": "down", "height": 2.6, "rects": [[0, 0, 5, 4]] }
+ ],
+ "levels": { "up": { "offset": [0, -12], "floor": 2.6 }, "down": { "offset": [14, 0], "floor": -2.6 } },
+ "doors": [
+  { "rooms": ["hall", "living"], "at": [[4, 0.8], [4, 2.2]] },
+  { "rooms": ["hall", "kitchen"], "at": [[1, 3], [2.5, 3]] },
+  { "rooms": ["kitchen", "living"], "at": [[4, 3.4], [4, 4.6]] },
+  { "rooms": ["bedroom", "bathroom"], "at": [[5, 1], [5, 2.2]] }
+ ],
+ "stairs": [
+  { "name": "Stairs up", "from": { "room": "hall", "rect": [1, -1.5, 2.2, 0], "enter": "s" }, "to": { "room": "bedroom", "rect": [1, 4, 2.2, 5.5], "enter": "n" } },
+  { "name": "Garage steps", "from": { "room": "living", "rect": [9, 1, 10.5, 2.2], "enter": "w" }, "to": { "room": "garage", "rect": [5, 1, 6.5, 2.2], "enter": "w" } }
+ ],
+ "exits": [{ "room": "hall", "name": "Front door", "at": [[0, 1], [0, 2]] }],
+ "start": { "room": "hall", "at": [2.5, 1.5] }
+}

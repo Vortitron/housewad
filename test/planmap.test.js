@@ -59,3 +59,45 @@ test('a floor plan builds a valid map with its rooms, doors and real lock', asyn
   const wad = readWad(await buildNodes(createZdbsp, writeWad(lumps)));
   assert.equal(wad.find('LINEDEFS').size / 14, map.linedefs.length);
 });
+
+test('levels sit beside the house and stairs teleport between them', () => {
+  const twoStorey = {
+    ...plan,
+    levels: { up: { offset: [0, -10], floor: 2.6 } },
+    rooms: [...plan.rooms, { id: 'loft', name: 'Loft', area: 'loft', level: 'up', height: 2, rects: [[0, 0, 6, 3]] }],
+    stairs: [{ name: 'Stairs up', from: { room: 'kitchen', rect: [7, -1.5, 8.2, 0], enter: 's' }, to: { room: 'loft', rect: [1, 3, 2.2, 4.5], enter: 'n' } }],
+    anywhere: ['residence'],
+  };
+  const withLoft = {
+    ...house,
+    rooms: [...house.rooms, room('loft', 'Loft', { lights: [{ entity_id: 'light.loft' }] }), room('residence', 'Residence', { lights: [{ entity_id: 'light.house_wide' }] })],
+  };
+  const { manifest, map } = generateFromPlan(twoStorey, withLoft);
+  const loft = manifest.rooms.find((r) => r.id === 'loft');
+  assert.equal(loft.floorZ, Math.round(2.6 * 64), 'the loft is up a storey');
+  const kitchen = manifest.rooms.find((r) => r.id === 'kitchen');
+  assert.ok(loft.bbox.y1 > kitchen.bbox.y2, 'and beside the house, not on top of it');
+  // Two teleport lines, each pointing at a sector the other end owns, with a destination in it.
+  const lines = map.linedefs.filter((l) => l.special === 97);
+  assert.equal(lines.length, 2);
+  for (const l of lines) {
+    const target = map.sectors.findIndex((s) => s.tag === l.tag);
+    assert.ok(target >= 0, `tag ${l.tag} has a sector`);
+    const sideFront = map.sidedefs[l.front];
+    assert.notEqual(sideFront.sector, target, 'you never land on the line you just crossed');
+  }
+  assert.equal(map.things.filter((t) => t.type === 14).length, 2, 'a destination at each end');
+  // Steps are walkable: no rise of more than 24 between neighbours.
+  const stairSectors = Object.entries(manifest.sectorRoom).filter(([, r]) => r.name === 'Stairs up').map(([s]) => Number(s));
+  assert.ok(stairSectors.length >= 4);
+  for (const l of map.linedefs) {
+    if (l.back === 0xffff || l.back === -1 || l.back === undefined) continue;
+    const a = map.sidedefs[l.front].sector;
+    const c = map.sidedefs[l.back].sector;
+    if (stairSectors.includes(a) || stairSectors.includes(c)) assert.ok(Math.abs(map.sectors[a].floor - map.sectors[c].floor) <= 24, `step ${a}->${c}`);
+  }
+  // The whole-house area has no room; its lamp hangs in one of the plan's rooms.
+  assert.ok(!manifest.rooms.some((r) => r.id === 'residence'));
+  const lamp = manifest.lamps.find((l) => l.entity === 'light.house_wide');
+  assert.ok(lamp && manifest.rooms.some((r) => r.id === lamp.room));
+});

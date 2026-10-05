@@ -56,7 +56,8 @@ function loadIwad(base) {
 const STYLE = `
   :host { display: block; }
   ha-card, .card { display: block; overflow: hidden; background: var(--ha-card-background, var(--card-background-color, #111)); color: var(--primary-text-color, #eee); border-radius: var(--ha-card-border-radius, 12px); }
-  .screen { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+  /* Never taller than the window: in a panel view the strip under the game stays in sight. */
+  .screen { position: relative; width: min(100%, calc((100dvh - var(--header-height, 56px) - 96px) * 4 / 3)); margin: 0 auto; aspect-ratio: 4 / 3; background: #000; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
   .start, .busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; box-sizing: border-box; text-align: center; background: radial-gradient(circle at 50% 40%, #3a0a05 0%, #0b0000 75%); color: #f2d7a6; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .title { font-size: clamp(28px, 7vw, 56px); font-weight: 900; letter-spacing: 2px; color: #ff3b1f; text-shadow: 0 3px 0 #5a0000, 0 0 24px #ff3b1f66; }
