@@ -2,7 +2,20 @@
 
 **Your house, as a Doom level. Shooting the lamp turns off the light.**
 
+[![house.wad: shoot the lamp in Doom and the real light goes off; the spider is a real fruit-fly brain; the front door asks Y/N before it unlocks](https://housefly.vome.io/media/housewad-demo.gif)](https://housefly.vome.io/media/housewad-demo.mp4)
+
+*Click for the full 42-second video: the lamp, a fruit-fly brain, the front door, the robot vacuum, a camera on the wall, and the tally screen.*
+
 house.wad is a Home Assistant dashboard card. It reads your floors, areas and devices, builds a Doom level out of them, and runs the real Doom engine in the card. What you do in the game happens in the house, and what happens in the house shows up in the game.
+
+## Quick start
+
+1. **Install it with HACS.** [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Vortitron&repository=housewad&category=plugin) Or in HACS: ⋮ → *Custom repositories* → `https://github.com/Vortitron/housewad`, type *Dashboard*. Then **Download**.
+2. **Add the card.** Edit a dashboard → *Add card* → **house.wad**. It is best in a view of its own set to *Panel*, so it gets the whole screen.
+3. **Press Practice.** Your house as a Doom level, and nothing in the real house moves.
+4. **Play for real.** Open the card's settings (the pencil, then the card) and tick what the game may control. Start with Lights. Then press **Play for real** and shoot a lamp.
+
+Not ready to put it on your own house? **[Play the demo house](https://housefly.vome.io/housewad)**: no account, nothing to install.
 
 ## Try it
 
