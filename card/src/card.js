@@ -26,10 +26,21 @@ import { HouseLink, hudText } from './house.js';
 const VERSION = '0.1.0';
 const ASSETS = new URL('./', import.meta.url);
 
+// Every file the card loads carries its version, so an upgrade never pairs a
+// new card with an engine the browser kept from the last one.
+function asset(name, base) {
+  const url = new URL(name, base);
+  url.searchParams.set('v', VERSION);
+  return url.href;
+}
+
+// The engine exports the card needs; a missing one means mismatched files.
+const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm'];
+
 let iwadPromise = null;
 function loadIwad(base) {
   if (!iwadPromise) {
-    iwadPromise = fetch(new URL('freedoom2.wad', base)).then((r) => {
+    iwadPromise = fetch(asset('freedoom2.wad', base)).then((r) => {
       if (!r.ok) throw new Error(`could not load the game data (${r.status})`);
       return r.arrayBuffer().then((b) => new Uint8Array(b));
     });
@@ -172,8 +183,8 @@ class HouseWadCard extends HTMLElement {
       const house = buildHouse(this._hass, { exclude: this.config.exclude || [] });
       const { lumps, manifest } = generateMap(house);
       const [{ default: createZdbsp }, { default: createEngine }, iwad] = await Promise.all([
-        import(/* @vite-ignore */ new URL('housewad-zdbsp.js', base).href),
-        import(/* @vite-ignore */ new URL('housewad-engine.js', base).href),
+        import(/* @vite-ignore */ asset('housewad-zdbsp.js', base)),
+        import(/* @vite-ignore */ asset('housewad-engine.js', base)),
         loadIwad(base),
       ]);
       // The tally screen names the level with a picture: make one of the home.
@@ -184,7 +195,7 @@ class HouseWadCard extends HTMLElement {
       } catch (e) {
         // Freedoom's own titles will do.
       }
-      const pwad = await buildNodes(createZdbsp, writeWad(lumps), { wasmUrl: new URL('housewad-zdbsp.wasm', base).href });
+      const pwad = await buildNodes(createZdbsp, writeWad(lumps), { wasmUrl: asset('housewad-zdbsp.wasm', base) });
       this._renderGame(mode);
       const canvas = this.shadowRoot.querySelector('canvas');
       this.actions = new HouseActions({
@@ -199,13 +210,17 @@ class HouseWadCard extends HTMLElement {
       let pending = [];
       this.engine = await DoomEngine.start({
         engineFactory: createEngine,
-        wasmUrl: new URL('housewad-engine.wasm', base).href,
+        wasmUrl: asset('housewad-engine.wasm', base),
         canvas,
         files: { 'freedoom2.wad': iwad, 'house.wad': pwad },
         args: ['-iwad', 'freedoom2.wad', '-file', 'house.wad', '-warp', '1', '-skill', String(this.config.skill || 3)],
         onHouseEvent: (...e) => (this.link ? this.link.onEvent(...e) : pending.push(e)),
         onFatal: (message) => setTimeout(() => this._renderStart(`The game stopped: ${message}`), 0),
         beforeMain: (m) => {
+          const missing = ENGINE_EXPORTS.filter((f) => typeof m[f] !== 'function');
+          if (missing.length) {
+            throw new Error(`the game engine is out of date (${missing.join(', ')} missing). Reload the page; if that does not help, clear the browser cache for this site.`);
+          }
           const home = (this._hass.config && this._hass.config.location_name) || 'Home';
           m.ccall('hw_level_title', null, ['string'], [hudText(`MAP01: ${home}`)]);
         },
