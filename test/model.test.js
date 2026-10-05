@@ -55,3 +55,11 @@ test('patterns match whole entity ids', () => {
   assert.ok(matches('lock.front_door', 'lock.front_door'));
   assert.ok(!matches('lock.front', 'lock.front_door'));
 });
+
+test('add-on switches from the Supervisor are not part of the house', () => {
+  const hass = makeFakeHass();
+  hass.states['switch.vome'] = { entity_id: 'switch.vome', state: 'on', attributes: { friendly_name: 'Vome' } };
+  hass.entities['switch.vome'] = { entity_id: 'switch.vome', platform: 'hassio', area_id: 'kitchen' };
+  const all = buildHouse(hass).rooms.flatMap((r) => r.switches.map((s) => s.entity_id));
+  assert.ok(!all.includes('switch.vome'));
+});

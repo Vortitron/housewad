@@ -9,6 +9,7 @@ export const UNASSIGNED = '_unassigned';
 const DOOR_SENSOR_CLASSES = ['door', 'garage_door'];
 const DOOR_COVER_CLASSES = ['door', 'garage', 'gate'];
 const PRESENCE_CLASSES = ['motion', 'occupancy', 'presence'];
+const NOT_HOUSE_PLATFORMS = ['hassio'];
 
 export function domainOf(entityId) {
   return entityId.split('.')[0];
@@ -45,6 +46,9 @@ export function buildHouse(hass, { exclude = [] } = {}) {
   const visible = (entityId) => {
     const e = entities[entityId];
     if (e && (e.hidden || e.entity_category)) return false;
+    // Supervisor entities are add-ons and the host, not the house: their
+    // switches would let a stray shot stop an add-on.
+    if (e && NOT_HOUSE_PLATFORMS.includes(e.platform)) return false;
     if (exclude.some((p) => matches(p, entityId))) return false;
     const st = hass.states[entityId];
     return !!st && st.state !== 'unavailable';
