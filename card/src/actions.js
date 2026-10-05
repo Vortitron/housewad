@@ -13,7 +13,9 @@ export const DEFAULT_ALLOW = ['light.*', 'switch.*', 'media_player.*', 'vacuum.*
 const EXACT_ONLY = ['lock', 'cover', 'alarm_control_panel', 'garage_door'];
 
 const MIN_GAP_PER_ENTITY = 1500; // ms; a chaingun on a bulb is a strobe
-const MIN_GAP_GLOBAL = 200;
+const MIN_GAP_GLOBAL = 200; // ms between calls; extra calls wait their turn
+const MAX_QUEUE = 8;
+const STROBE_DOMAINS = ['light', 'switch'];
 
 export function makeAllow(patterns = DEFAULT_ALLOW) {
   const warnings = [];
@@ -43,6 +45,7 @@ export class HouseActions {
     this.overrides = new Map();
     this.lastCall = new Map();
     this.lastAny = 0;
+    this.queue = [];
     this.timers = new Set();
   }
 
@@ -68,20 +71,44 @@ export class HouseActions {
     const domain = domainOf(entityId);
     if (!this.allowed(entityId)) return { ok: false, reason: 'not-allowed' };
     const now = Date.now();
-    if (now - (this.lastCall.get(entityId) || 0) < MIN_GAP_PER_ENTITY) return { ok: false, reason: 'too-fast' };
-    if (now - this.lastAny < MIN_GAP_GLOBAL) return { ok: false, reason: 'too-fast' };
-    this.lastCall.set(entityId, now);
-    this.lastAny = now;
+    // Lights and plugs are limited per entity (flicker is the risk); anything
+    // else only per action, so waking the vacuum then killing it both count.
+    const limitKey = STROBE_DOMAINS.includes(domain) ? entityId : `${entityId} ${service}`;
+    if (now - (this.lastCall.get(limitKey) || 0) < MIN_GAP_PER_ENTITY) return { ok: false, reason: 'too-fast' };
+    if (this.queue.length >= MAX_QUEUE) return { ok: false, reason: 'too-fast' };
+    this.lastCall.set(limitKey, now);
+    this.queue.push({ entityId, domain, service, data });
+    this._drain();
+    return { ok: true };
+  }
 
+  _drain() {
+    if (this.draining) return;
+    const wait = Math.max(0, this.lastAny + MIN_GAP_GLOBAL - Date.now());
+    if (wait > 0) {
+      this.draining = true;
+      this._later(wait, () => {
+        this.draining = false;
+        this._drain();
+      });
+      return;
+    }
+    const next = this.queue.shift();
+    if (!next) return;
+    this.lastAny = Date.now();
+    this._send(next);
+    if (this.queue.length) this._drain();
+  }
+
+  _send({ entityId, domain, service, data }) {
     if (this.mode === 'practice') {
       this._simulate(entityId, domain, service, data);
-      return { ok: true };
+      return;
     }
     const hass = this.getHass();
     Promise.resolve(hass.callService(domain, service, { entity_id: entityId, ...data })).catch((err) => {
       this.onChange({ entityId, error: (err && err.message) || String(err) });
     });
-    return { ok: true };
   }
 
   _set(entityId, state, attributes = {}) {

@@ -398,3 +398,16 @@ int hw_teleport(int x, int y, int angle)
     p->mo->momx = p->mo->momy = p->mo->momz = 0;
     return 1;
 }
+
+// Damage a slot's thing as if the player had shot it. For tests.
+EMSCRIPTEN_KEEPALIVE
+int hw_debug_damage(int slot, int damage)
+{
+    mobj_t *mo = Slot(slot);
+    mobj_t *player = players[consoleplayer].mo;
+
+    if (mo == NULL || player == NULL || !(mo->flags & MF_SHOOTABLE))
+        return 0;
+    P_DamageMobj(mo, player, player, damage);
+    return 1;
+}

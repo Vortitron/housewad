@@ -427,9 +427,12 @@ export class HouseLink {
       if (!info) continue;
       let level = info.outdoor ? null : 160;
       if (room.lights.length) {
-        const lit = room.lights.map((l) => a.state(l.entity_id)).filter(isOn);
-        const bright = lit.map((st) => st.attributes.brightness ?? 255);
-        level = lit.length ? 112 + Math.round((Math.max(...bright) * 143) / 255) : 64;
+        // Each light carries its share, so every lamp shot out shows.
+        const sum = room.lights
+          .map((l) => a.state(l.entity_id))
+          .filter(isOn)
+          .reduce((n, st) => n + (st.attributes.brightness ?? 255) / 255, 0);
+        level = 64 + Math.round((191 * sum) / room.lights.length);
       }
       if (info.outdoor || /garden|patio|terrace|balcon|yard|altan|ute/i.test(room.name)) {
         const sun = hass && hass.states['sun.sun'];
