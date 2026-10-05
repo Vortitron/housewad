@@ -1019,7 +1019,20 @@ export class HouseLink {
   status() {
     const p = this.ready ? this.player() : null;
     const room = p && this.manifest.sectorRoom[p.sector];
-    return { room: room ? room.name : '', target: this.aimed(), last: this.last };
+    return { room: room ? room.name : '', target: this.aimed(), last: this.last, world: this.worldNow() };
+  }
+
+  // What is going on out there right now, for the status line: anything on,
+  // and any service that is down.
+  worldNow() {
+    const out = [];
+    for (const w of this.house.world || []) {
+      const st = this.actions.state(w.entity_id)?.state;
+      if (w.kind === 'uptime') {
+        if (st === 'off') out.push(`${w.name.replace(/ is up$/i, '')} down`);
+      } else if (st === 'on') out.push(w.name);
+    }
+    return out.join(', ');
   }
 
   // Called a few times a second: room announcements, world effects.

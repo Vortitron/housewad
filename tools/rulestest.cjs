@@ -107,6 +107,7 @@ async function run(mode, query = '') {
   await t.page.evaluate(() => window.hass.set('switch.tower_bridge_open', 'on'));
   await t.page.waitForTimeout(1500);
   assert.ok(await t.page.evaluate(() => window.card.link.effects.flickering), 'corridor flickers');
+  assert.match(await t.page.evaluate(() => window.card.shadowRoot.querySelector('.status .world').textContent), /Tower Bridge open/);
   console.log('world events ok');
   assert.deepStrictEqual(t.errors, []);
   await t.page.screenshot({ path: SP + '/rules-real.png' });

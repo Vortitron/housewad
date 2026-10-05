@@ -72,6 +72,7 @@ const STYLE = `
   .status .where { font-weight: 800; color: #ff7a5c; }
   .status .aim::before { content: 'Aiming at: '; opacity: .6; }
   .status .last::before { content: 'Last: '; opacity: .6; }
+  .status .world::before { content: 'Out there: '; opacity: .6; }
   .wrap:fullscreen { display: flex; flex-direction: column; justify-content: center; background: #000; color: #eee; }
   .wrap:fullscreen .screen { width: auto; height: calc(100vh - 64px); max-width: 100vw; margin: 0 auto; }
   .confirm { position: absolute; left: 0; right: 0; bottom: 22%; display: none; justify-content: center; gap: 16px; }
@@ -270,6 +271,7 @@ class HouseWadCard extends HTMLElement {
           <span class="where"></span>
           <span class="aim"></span>
           <span class="last"></span>
+          <span class="world"></span>
         </div>
         <div class="bar">
           <span class="mode ${mode}">${mode === 'real' ? 'LIVE: THIS IS YOUR HOUSE' : 'PRACTICE'}</span>
@@ -381,6 +383,7 @@ class HouseWadCard extends HTMLElement {
     set('aim', s.target || '');
     const age = s.last ? Math.round((Date.now() - s.last.at) / 1000) : 0;
     set('last', s.last ? `${s.last.text}${age > 2 ? ` (${age < 90 ? age + 's' : Math.round(age / 60) + 'm'} ago)` : ''}` : '');
+    set('world', s.world || '');
   }
 
   _queueSync() {

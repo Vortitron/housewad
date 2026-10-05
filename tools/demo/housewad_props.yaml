@@ -144,6 +144,53 @@ climate:
     initial_hvac_mode: heat
 
 automation:
+  # The demo is shared by everyone who visits: put the props back after a
+  # while, so the next visitor still finds a locked door, a standby plug and
+  # an open window to fix.
+  - id: housewad_reset_front_door
+    alias: "house.wad props: the front door locks itself again"
+    triggers:
+      - trigger: state
+        entity_id: lock.front_door
+        to: unlocked
+        for: "00:05:00"
+    actions:
+      - action: lock.lock
+        target:
+          entity_id: lock.front_door
+  - id: housewad_reset_garage
+    alias: "house.wad props: the garage door closes itself"
+    triggers:
+      - trigger: state
+        entity_id: cover.garage_door
+        to: open
+        for: "00:03:00"
+    actions:
+      - action: cover.close_cover
+        target:
+          entity_id: cover.garage_door
+  - id: housewad_reset_tv_plug
+    alias: "house.wad props: the TV plug goes back on standby"
+    triggers:
+      - trigger: state
+        entity_id: switch.tv_plug
+        to: "off"
+        for: "00:05:00"
+    actions:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.tv_plug
+  - id: housewad_reset_window
+    alias: "house.wad props: somebody opens the bedroom window again"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.bedroom_window
+        to: "off"
+        for: "00:10:00"
+    actions:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.hw_bedroom_window_open
   - id: housewad_vacuum_docks
     alias: "house.wad props: the vacuum gets home"
     triggers:
