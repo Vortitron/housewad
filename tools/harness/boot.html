@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Engine boot</title>
+<style>body{background:#000;margin:0}canvas{width:640px;height:480px;image-rendering:pixelated}</style>
+<canvas id="c"></canvas>
+<pre id="log" style="color:#8f8;font-size:10px"></pre>
+<script type="module">
+import createHouseWadEngine from '../../dist/housewad-engine.js';
+import { DoomEngine } from '../../card/src/engine.js';
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; };
+const params = new URLSearchParams(location.search);
+const iwad = new Uint8Array(await (await fetch(params.get('iwad') || '../../third_party/freedoom-0.13.0/freedoom2.wad')).arrayBuffer());
+const files = { 'freedoom2.wad': iwad };
+const args = ['-iwad', 'freedoom2.wad', '-skill', '3', '-warp', params.get('map') || '1'];
+if (params.get('pwad')) {
+  files['house.wad'] = new Uint8Array(await (await fetch(params.get('pwad'))).arrayBuffer());
+  args.push('-file', 'house.wad');
+}
+window.houseEvents = [];
+window.engine = await DoomEngine.start({
+  engineFactory: createHouseWadEngine,
+  canvas: document.getElementById('c'),
+  files, args, print: log,
+  onHouseEvent: (...a) => window.houseEvents.push(a),
+});
+window.addEventListener('keydown', (e) => { if (engine.handleKeyboard(e)) e.preventDefault(); });
+window.addEventListener('keyup', (e) => { if (engine.handleKeyboard(e)) e.preventDefault(); });
+window.booted = true;
+</script>
