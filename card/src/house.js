@@ -9,7 +9,7 @@
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
 
-const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7 };
+const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8 };
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4 };
 
 const MONSTER_SLOT_BASE = 2000;
@@ -23,6 +23,14 @@ export const DEFAULT_RULES = {
 };
 
 // Doom's HUD font has capitals and ASCII punctuation only.
+// Doom's message box: same font, but line breaks allowed.
+export function boxText(s) {
+  return String(s)
+    .split('\n')
+    .map((line) => hudText(line))
+    .join('\n');
+}
+
 export function hudText(s) {
   return String(s)
     .normalize('NFD')
@@ -36,7 +44,7 @@ const isOn = (st) => !!st && st.state === 'on';
 const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
 
 export class HouseLink {
-  constructor({ engine, manifest, house, actions, rules = {}, log }) {
+  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, onConfirm, log }) {
     this.engine = engine;
     this.m = engine.module;
     this.manifest = manifest;
@@ -44,6 +52,10 @@ export class HouseLink {
     this.actions = actions;
     this.rules = { ...DEFAULT_RULES, ...rules };
     this.log = log || (() => {});
+    this.confirmUnlock = confirmUnlock;
+    this.onConfirm = onConfirm || (() => {});
+    this.confirms = new Map();
+    this.nextConfirm = 1;
     this.ready = false;
     this.out = this.m._malloc(8 * 4);
     this.monsters = new Map(); // key -> { slot, alive, killedAt, dormant, spot }
@@ -105,6 +117,8 @@ export class HouseLink {
           return this._lineUsed(a);
         case EV.SHOOT_LINE:
           return this._lineShot(a);
+        case EV.CONFIRM:
+          return this._confirmed(a, b === 1);
         default:
           return undefined;
       }
@@ -240,7 +254,33 @@ export class HouseLink {
     return this.message(`${door.name} is a real door. Go and open it.`);
   }
 
+  // Ask before anything that lets people into the house.
+  confirm(text, action) {
+    const token = this.nextConfirm++;
+    this.confirms.set(token, action);
+    this.m.ccall('hw_confirm', null, ['string', 'number'], [boxText(text), token]);
+    this.onConfirm(true);
+  }
+
+  _confirmed(token, yes) {
+    const action = this.confirms.get(token);
+    this.confirms.delete(token);
+    this.onConfirm(false);
+    if (!action) return;
+    if (yes) action();
+    else this.message('Sensible.');
+  }
+
   _doorCall(door, entityId, service, doing) {
+    const opening = service === 'unlock' || service === 'open_cover';
+    if (opening && this.confirmUnlock && this.actions.mode === 'real' && this.actions.allowed(entityId)) {
+      const verb = service === 'unlock' ? 'unlock' : 'open';
+      return this.confirm(`This will ${verb} the real\n${door.name}.\n\nPress Y to ${verb} it, N to stay in.`, () => this._doDoorCall(door, entityId, service, doing));
+    }
+    return this._doDoorCall(door, entityId, service, doing);
+  }
+
+  _doDoorCall(door, entityId, service, doing) {
     const r = this.actions.call(entityId, service);
     if (r.ok) return this.message(`${door.name}: ${doing}...`);
     if (r.reason === 'not-allowed') {

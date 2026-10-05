@@ -21,6 +21,9 @@
 #include "s_sound.h"
 #include "sounds.h"
 #include "z_zone.h"
+#include "m_controls.h"
+
+void M_StartMessage(char *string, void *routine, boolean input);
 
 #define HW_MAX_SLOTS 4096
 
@@ -410,4 +413,24 @@ int hw_debug_damage(int slot, int damage)
         return 0;
     P_DamageMobj(mo, player, player, damage);
     return 1;
+}
+
+// Ask the player a yes/no question in Doom's own message box (the one that
+// asks whether you really want to quit). The game pauses while it is up.
+static int confirm_token;
+
+static void HW_ConfirmResponse(int key)
+{
+    js_house_event(HW_EV_CONFIRM, confirm_token, key == key_menu_confirm, 0);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void hw_confirm(const char *text, int token)
+{
+    static char buffer[256];
+
+    strncpy(buffer, text, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    confirm_token = token;
+    M_StartMessage(buffer, HW_ConfirmResponse, true);
 }

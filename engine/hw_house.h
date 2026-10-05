@@ -29,6 +29,7 @@ enum
     HW_EV_GONE = 5,   // a: slot (removed from the world)
     HW_EV_USE = 6,    // a: line index, b: special, c: line tag
     HW_EV_SHOOT_LINE = 7, // a: line index, b: special, c: line tag
+    HW_EV_CONFIRM = 8, // a: token, b: 1 for yes
 };
 
 boolean HW_IsHouseSpecial(int special);

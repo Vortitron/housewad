@@ -51,6 +51,15 @@ const SP = process.env.SP || '/tmp';
   console.log('teleport to door', await tp(door.x, door.y - dir * 36, dir > 0 ? 90 : 270));
   await page.waitForTimeout(300);
   await press('KeyE');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: SP + '/card-confirm.png' });
+  const callsNow = () => page.evaluate(() => (window.hass && window.hass.calls ? window.hass.calls.length : 0));
+  await press('KeyN');
+  await page.waitForTimeout(800);
+  if (await (async () => { try { return await page.evaluate(() => window.__card ? window.__card.hass.states['lock.front_door'].state : window.hass.states['lock.front_door'].state); } catch (e) { return null; } })() !== 'locked') throw new Error('N must leave the door locked');
+  await press('KeyE');
+  await page.waitForTimeout(500);
+  await press('KeyY');
   await page.waitForTimeout(2500);
   await page.screenshot({ path: SP + '/card-door.png' });
 

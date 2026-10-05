@@ -9,6 +9,7 @@
 //     - lock.front_door    # locks and door covers: one by one, never by pattern
 //   exclude: [switch.server_rack]   # leave things out of the house entirely
 //   skill: 3               # 1 (too young to die) .. 5 (nightmare)
+//   confirm_unlock: true   # ask (Y/N) before unlocking a lock or opening a door cover
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
@@ -63,6 +64,9 @@ const STYLE = `
   .act { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
   .act div { width: 72px; height: 56px; }
   .hint { opacity: .6; }
+  .confirm { position: absolute; left: 0; right: 0; bottom: 22%; display: none; justify-content: center; gap: 16px; }
+  .confirm.on { display: flex; }
+  .confirm button { font-size: 18px; padding: 10px 28px; }
 `;
 
 class HouseWadCard extends HTMLElement {
@@ -190,6 +194,11 @@ class HouseWadCard extends HTMLElement {
         house,
         actions: this.actions,
         rules: this.config.rules || {},
+        confirmUnlock: this.config.confirm_unlock !== false,
+        onConfirm: (pending) => {
+          const box = this.shadowRoot.querySelector('.confirm');
+          if (box) box.classList.toggle('on', pending);
+        },
         log: (s) => console.warn('[housewad]', s),
       });
       for (const e of pending) this.link.onEvent(...e);
@@ -212,6 +221,10 @@ class HouseWadCard extends HTMLElement {
       <ha-card>
         <div class="screen" tabindex="0" aria-label="house.wad game. Click to capture the mouse.">
           <canvas width="320" height="200"></canvas>
+          <div class="confirm">
+            <button data-answer="y">YES</button>
+            <button data-answer="n">NO</button>
+          </div>
           <div class="touch ${touch ? 'on' : ''}">
             <div class="pad">
               <span></span><div data-key="${KEY.UP}">&#9650;</div><span></span>
@@ -270,6 +283,15 @@ class HouseWadCard extends HTMLElement {
     screen.addEventListener('mousemove', (e) => {
       if (locked()) engine.mouse(Math.round(e.movementX * 4), 0);
     });
+
+    for (const el of this.shadowRoot.querySelectorAll('[data-answer]')) {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        engine.tap(el.dataset.answer.charCodeAt(0));
+        screen.focus();
+      });
+      el.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
 
     for (const el of this.shadowRoot.querySelectorAll('[data-key]')) {
       const key = Number(el.dataset.key);
