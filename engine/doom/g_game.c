@@ -17,6 +17,7 @@
 
 
 
+#include "hw_house.h" // housewad
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -1329,6 +1330,7 @@ void G_ExitLevel (void)
 { 
     secretexit = false; 
     gameaction = ga_completed; 
+    HW_LevelExit(); // housewad
 } 
 
 // Here's for the german edition.
@@ -1518,8 +1520,14 @@ void G_WorldDone (void)
  
 void G_DoWorldDone (void) 
 {        
+    char lump[9];
+
     gamestate = GS_LEVEL; 
     gamemap = wminfo.next+1; 
+    // housewad: there is only the house; after the tally, it is the next day.
+    M_snprintf(lump, sizeof(lump), "MAP%02d", gamemap);
+    if (gamemode == commercial && W_CheckNumForName(lump) < 0)
+        gamemap = 1;
     G_DoLoadLevel (); 
     gameaction = ga_nothing; 
     viewactive = true; 

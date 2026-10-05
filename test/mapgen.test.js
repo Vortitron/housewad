@@ -36,9 +36,10 @@ function checkMap(map, manifest) {
     for (const [v, d] of degree) assert.equal(d % 2, 0, `sector ${si} closed at vertex ${vertices[v]}`);
   });
   assert.equal(things.filter((t) => t.type === 1).length, 1, 'one player start');
+  assert.equal(linedefs.filter((l) => l.special === 11).length, 1, 'one way out');
   for (const [line, ref] of Object.entries(manifest.lines)) {
     const l = linedefs[line];
-    const want = { switch: SPECIAL.SWITCH, media: SPECIAL.MEDIA, door: SPECIAL.DOOR }[ref.kind];
+    const want = { switch: SPECIAL.SWITCH, media: SPECIAL.MEDIA, door: SPECIAL.DOOR, camera: SPECIAL.CAMERA, exit: 11 }[ref.kind];
     assert.equal(l.special, want, `line ${line} special for ${ref.kind}`);
   }
   for (const d of manifest.doors) {

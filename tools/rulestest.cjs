@@ -66,6 +66,25 @@ async function run(mode, query = '') {
   await t.page.waitForTimeout(1200);
   m = await t.mon();
   assert.ok(!m['caco:binary_sensor.bedroom_window'], 'caco gone with the window shut');
+  // Tagged keys lie in the room Bluetooth says; picking them up tells you where.
+  let keys = await t.page.evaluate(() => { const l = window.card.link; const it = l.items.get('tag:sensor.car_keys_area'); if (!it) return null; l.m._hw_slot_pos(it.slot, l.out); return { room: it.room, x: l.m.HEAP32[l.out >> 2], y: l.m.HEAP32[(l.out >> 2) + 1] }; });
+  assert.ok(keys && keys.room === 'kitchen', 'keys in the kitchen');
+  await t.page.evaluate(([x, y]) => window.card.engine.module._hw_teleport(x - 48, y, 0), [keys.x, keys.y]);
+  await t.page.evaluate(() => window.card.shadowRoot.querySelector('.screen').focus());
+  await t.page.keyboard.down('KeyW'); await t.page.waitForTimeout(500); await t.page.keyboard.up('KeyW');
+  await t.page.waitForTimeout(300);
+  const found = await t.page.evaluate(() => window.card.link.last && window.card.link.last.text);
+  console.log('pickup:', found);
+  assert.match(found, /Found: Car Keys\. It's in the Kitchen/);
+  await t.page.evaluate(() => window.hass.set('sensor.car_keys_area', 'Bedroom'));
+  await t.page.waitForTimeout(1300);
+  keys = await t.page.evaluate(() => { const it = window.card.link.items.get('tag:sensor.car_keys_area'); return it && it.present ? it.room : null; });
+  assert.strictEqual(keys, 'bedroom', 'keys moved rooms with the tag');
+  // The vacuum, cleaning, is in whichever room it reports.
+  await t.page.evaluate(() => { window.hass.set('vacuum.roborock', 'cleaning'); window.hass.set('sensor.roborock_current_room', 'Kitchen'); });
+  await t.page.waitForTimeout(1500);
+  const vacRoom = await t.page.evaluate(() => window.card.link.monsters.get('vac:vacuum.roborock')?.spec.room);
+  assert.strictEqual(vacRoom, 'kitchen', 'vacuum demon follows the room sensor');
   assert.deepStrictEqual(t.errors, []);
   await t.page.screenshot({ path: SP + '/rules-real.png' });
   await t.browser.close();

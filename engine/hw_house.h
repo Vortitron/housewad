@@ -32,6 +32,7 @@ enum
     HW_EV_SHOOT_LINE = 7, // a: line index, b: special, c: line tag
     HW_EV_CONFIRM = 8, // a: token, b: 1 for yes
     HW_EV_HURT = 9,    // a: slot, b: damage, c: 1 if the player did it (puppets only)
+    HW_EV_EXIT = 10,   // the player left the level by the exit
 };
 
 boolean HW_IsHouseSpecial(int special);
@@ -44,5 +45,6 @@ void HW_ResetLevel(void);
 void HW_LevelReady(int map);
 void HW_Fatal(const char *message);
 void HW_PuppetChase(struct mobj_s *actor);
+void HW_LevelExit(void);
 
 #endif

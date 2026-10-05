@@ -132,6 +132,7 @@ static mobj_t *Slot(int slot)
 #define HW_SPAWN_FOG 1     // teleport fog and sound, for monsters appearing
 #define HW_SPAWN_DORMANT 2 // ignore the player until hurt
 #define HW_SPAWN_AMBUSH 4  // only wake on sight, not sound
+#define HW_SPAWN_COUNT 8   // a house problem: counts on the tally screen
 
 EMSCRIPTEN_KEEPALIVE
 int hw_spawn(int slot, int type, int x, int y, int angle, int flags)
@@ -157,6 +158,14 @@ int hw_spawn(int slot, int type, int x, int y, int angle, int flags)
         mobj_t *fog = P_SpawnMobj(mo->x, mo->y, mo->z, MT_TFOG);
         S_StartSound(fog, sfx_telept);
     }
+    // Only house problems count as kills on the tally; flies and people don't.
+    if (mo->flags & MF_COUNTKILL)
+    {
+        if (flags & HW_SPAWN_COUNT)
+            totalkills++;
+        else
+            mo->flags &= ~MF_COUNTKILL;
+    }
     slots[slot] = mo;
     return 1;
 }
@@ -173,6 +182,9 @@ void hw_remove(int slot, int fog)
         mobj_t *f = P_SpawnMobj(mo->x, mo->y, mo->z, MT_TFOG);
         S_StartSound(f, sfx_telept);
     }
+    // Fixed some other way (somebody switched the light off): not a miss.
+    if ((mo->flags & MF_COUNTKILL) && mo->health > 0 && totalkills > 0)
+        totalkills--;
     P_RemoveMobj(mo);
 }
 
@@ -382,6 +394,13 @@ int hw_type(const char *name)
         {"cacodemon", MT_HEAD},
         {"shotgunguy", MT_SHOTGUY},
         {"arachnotron", MT_BABY},
+        {"redcard", MT_MISC5},
+        {"bluecard", MT_MISC4},
+        {"yellowcard", MT_MISC6},
+        {"redskull", MT_MISC8},
+        {"blueskull", MT_MISC9},
+        {"yellowskull", MT_MISC7},
+        {"backpack", MT_MISC24},
     };
     unsigned i;
 
@@ -514,4 +533,80 @@ void hw_puppet(int slot, int enable, int heading, int speed)
     mo->target = NULL;
     if (speed > 0 && mo->state == &states[mo->info->spawnstate])
         P_SetMobjState(mo, mo->info->seestate);
+}
+
+void HW_LevelExit(void)
+{
+    js_house_event(HW_EV_EXIT, gamemap, players[consoleplayer].killcount, totalkills);
+}
+
+// What the player is aiming at -------------------------------------------------
+//
+// out[0] slot of the house thing in the sights (0 none), out[1] its distance;
+// out[2] the first house or exit line along the view (-1 none), out[3] its
+// distance. Walls and closed doors stop the line search, so nothing behind
+// them counts.
+
+static int aim_line;
+static fixed_t aim_frac;
+
+static boolean PTR_HwAim(intercept_t *in)
+{
+    line_t *li = in->d.line;
+
+    if (HW_IsHouseSpecial(li->special) || li->special == 11 || li->special == 51 || li->special == 52)
+    {
+        aim_line = li - lines;
+        aim_frac = in->frac;
+        return false;
+    }
+    if (!(li->flags & ML_TWOSIDED))
+        return false;
+    P_LineOpening(li);
+    return openrange > 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int hw_aim(int *out)
+{
+    player_t *p = &players[consoleplayer];
+    mobj_t *mo = p->mo;
+    fixed_t range = 1024 * FRACUNIT;
+    unsigned fine;
+
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = -1;
+    out[3] = 0;
+    if (gamestate != GS_LEVEL || mo == NULL)
+        return 0;
+    P_AimLineAttack(mo, mo->angle, range);
+    if (linetarget != NULL && linetarget->hw_slot)
+    {
+        out[0] = linetarget->hw_slot;
+        out[1] = P_AproxDistance(linetarget->x - mo->x, linetarget->y - mo->y) >> FRACBITS;
+    }
+    aim_line = -1;
+    fine = mo->angle >> ANGLETOFINESHIFT;
+    P_PathTraverse(mo->x, mo->y, mo->x + FixedMul(range, finecosine[fine]),
+                   mo->y + FixedMul(range, finesine[fine]), PT_ADDLINES, PTR_HwAim);
+    if (aim_line >= 0)
+    {
+        out[2] = aim_line;
+        out[3] = FixedMul(aim_frac, range) >> FRACBITS;
+    }
+    return 1;
+}
+
+// The level's name on the automap ("MAP01: <your home>").
+extern char *mapnames_commercial[];
+
+EMSCRIPTEN_KEEPALIVE
+void hw_level_title(const char *text)
+{
+    static char buffer[64];
+
+    strncpy(buffer, text, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    mapnames_commercial[0] = buffer;
 }

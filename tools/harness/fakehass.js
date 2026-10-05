@@ -46,7 +46,9 @@ export function makeFakeHass(onUpdate) {
   add('switch.towel_rail', 'off', { friendly_name: 'Towel Rail' }, 'bathroom');
   add('media_player.tv', 'playing', { friendly_name: 'Living Room TV', is_volume_muted: false }, 'living_room');
   add('media_player.bedroom_speaker', 'paused', { friendly_name: 'Bedroom Speaker' }, 'bedroom');
-  add('vacuum.roborock', 'docked', { friendly_name: 'Roborock' }, 'hallway');
+  add('vacuum.roborock', 'docked', { friendly_name: 'Roborock' }, 'hallway', 'robo');
+  add('sensor.roborock_current_room', 'Hallway', { friendly_name: 'Roborock Current room' }, 'hallway', 'robo');
+  add('sensor.car_keys_area', 'Kitchen', { friendly_name: 'Car Keys Area' }, null);
   add('lock.front_door', 'locked', { friendly_name: 'Front Door' }, 'hallway', 'front_door_lock');
   add('binary_sensor.front_door', 'off', { friendly_name: 'Front Door Contact', device_class: 'door' }, 'hallway', 'front_door_lock');
   add('cover.garage_door', 'closed', { friendly_name: 'Garage Door', device_class: 'garage' }, 'garage');
@@ -59,6 +61,7 @@ export function makeFakeHass(onUpdate) {
   add('sensor.test_fly_mode', 'walk', { friendly_name: 'Test Fly Mode' }, null);
   add('sensor.test_fly_heading', '90', { friendly_name: 'Test Fly Heading' }, null);
   add('sensor.test_fly_kenyon_cells_active', '30', { friendly_name: 'Test Fly Kenyon cells active' }, null);
+  entities['sensor.car_keys_area'].platform = 'bermuda';
   for (const id of ['sensor.test_fly_mode', 'sensor.test_fly_heading', 'sensor.test_fly_kenyon_cells_active']) entities[id].platform = 'fly_house';
   add('switch.config_thing', 'on', { friendly_name: 'Hidden config switch' }, 'kitchen');
   entities['switch.config_thing'].entity_category = 'config';
@@ -87,6 +90,7 @@ export function makeFakeHass(onUpdate) {
     areas,
     floors,
     user: { name: 'Test', is_admin: true },
+    config: { location_name: 'Test House' },
     calls,
     set,
     callService: async (domain, service, data) => {

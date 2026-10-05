@@ -10,7 +10,7 @@ await import('../../dist/housewad-card.js');
 const card = document.querySelector('housewad-card');
 const params = new URLSearchParams(location.search);
 const allow = (params.get('allow') || 'light.*,switch.*,media_player.*,vacuum.*,lock.front_door,cover.garage_door').split(',');
-card.setConfig({ allow, assets_url: '/dist/', rules: { empty_minutes: 10 } });
+card.setConfig({ allow, assets_url: '/dist/', rules: { empty_minutes: 10 }, cheats: { IDCOFFEE: 'switch.kettle' }, exit_scene: 'switch.towel_rail' });
 window.hass = makeFakeHass((h) => { card.hass = h; window.hass = h; });
 card.hass = window.hass;
 window.card = card;

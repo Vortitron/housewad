@@ -16,6 +16,11 @@ house.wad is a Home Assistant dashboard card. It reads your floors, areas and de
 | Room light level | Follows that room's real lights |
 | Doors | Open when the real door is open or unlocked |
 | A camera in a room | A screen on that room's wall shows its live picture |
+| A tagged thing (Bermuda or ESPresense) | A keycard lying in the room it's really in. Pick it up: "Found: Car Keys. It's in the Kitchen." |
+| The exit switch by the start | Doom's tally screen, named after your home: kills are the problems you fixed. Runs `exit_scene` if set |
+| Type a cheat code | `idbeholdl` turns every allowed light on; your own codes run your scenes and scripts |
+
+Under the game, a status line shows the room you're in, what you're aiming at (and its state), and the last thing that happened.
 
 ### The house's problems are demons
 
@@ -23,7 +28,7 @@ house.wad is a Home Assistant dashboard card. It reads your floors, areas and de
 |---|---|---|
 | Lost soul | A light left on in a room nobody has been in for 10 minutes | Turns the light off |
 | Zombieman | A plug switched on but only drawing standby power (0.3 to 15 W) | Turns the plug off |
-| Pinky demon | Your robot vacuum. Asleep on its dock; awake while it cleans | Waking it starts a clean. Killing it sends it home |
+| Pinky demon | Your robot vacuum. Asleep on its dock; awake while it cleans, in whichever room it reports | Waking it starts a clean. Killing it sends it home |
 | Imp | Motion in a room | Nothing. It was a person. It'll be back |
 | Cacodemon | A window open while the heating runs | Nothing. Go and close the window yourself |
 
@@ -74,6 +79,10 @@ exclude:                  # leave things out of the house altogether
 skill: 3                  # 1 (I'm too young to die) to 5 (Nightmare!)
 confirm_unlock: true      # ask Y/N before unlocking a lock or opening a door cover
 flies: true               # HouseFly brains walk the level
+exit_scene: scene.leaving_home   # the exit switch runs this
+cheats:                   # type the code in the game, run the thing
+  idcoffee: script.make_coffee
+  idgoodnight: scene.goodnight
 rules:
   empty_minutes: 10       # a light on in an empty room this long is a lost soul
   standby_min: 0.3        # watts

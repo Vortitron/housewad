@@ -143,6 +143,21 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     }
   }
 
+  // A vacuum that reports which room it is in (Dreame, Valetudo and others
+  // have a "current room" sensor on the vacuum's device).
+  const roomSensorByDevice = new Map();
+  for (const entityId of Object.keys(hass.states)) {
+    if (!/^sensor\..*(current_room|current_segment|_room)$/.test(entityId)) continue;
+    const dev = deviceOf(entityId);
+    if (dev && !roomSensorByDevice.has(dev)) roomSensorByDevice.set(dev, entityId);
+  }
+  for (const room of rooms.values()) {
+    for (const v of room.vacuums) {
+      const dev = deviceOf(v.entity_id);
+      if (dev && roomSensorByDevice.has(dev)) v.roomSensor = roomSensorByDevice.get(dev);
+    }
+  }
+
   // Switches learn their power sensor (same device), for standby hunting.
   for (const room of rooms.values()) {
     for (const sw of room.switches) {
@@ -194,6 +209,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     floors: Object.values(floors).map((f) => ({ id: f.floor_id, name: f.name, level: f.level ?? 0 })),
     rooms: houseRooms,
     flies: findFlies(hass, exclude),
+    trackers: findTrackers(hass, exclude),
   };
 }
 
@@ -217,4 +233,21 @@ export function findFlies(hass, exclude = []) {
     flies.push({ id: prefix, name, mode: entityId, heading });
   }
   return flies;
+}
+
+// Things tracked room by room over Bluetooth: Bermuda's "<thing>_area"
+// sensors and ESPresense (mqtt_room) sensors, whose state is a room name.
+export function findTrackers(hass, exclude = []) {
+  const entities = hass.entities || {};
+  const out = [];
+  for (const entityId of Object.keys(hass.states).sort()) {
+    if (!entityId.startsWith('sensor.')) continue;
+    const reg = entities[entityId] || {};
+    const bermuda = reg.platform === 'bermuda' && entityId.endsWith('_area');
+    if (!bermuda && reg.platform !== 'mqtt_room') continue;
+    if (exclude.some((p) => matches(p, entityId))) continue;
+    const name = (hass.states[entityId].attributes.friendly_name || entityId).replace(/ Area$/, '');
+    out.push({ entity_id: entityId, name });
+  }
+  return out;
 }

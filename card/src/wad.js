@@ -84,3 +84,78 @@ export function flatNames(wad) {
   }
   return names;
 }
+
+// Doom picture ("patch") format ----------------------------------------------
+
+export function decodePatch(bytes) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const w = v.getInt16(0, true);
+  const h = v.getInt16(2, true);
+  const pixels = new Int16Array(w * h).fill(-1);
+  for (let x = 0; x < w; x++) {
+    let at = v.getInt32(8 + x * 4, true);
+    while (bytes[at] !== 0xff) {
+      const top = bytes[at];
+      const len = bytes[at + 1];
+      for (let i = 0; i < len; i++) if (top + i < h) pixels[(top + i) * w + x] = bytes[at + 3 + i];
+      at += len + 4;
+    }
+  }
+  return { w, h, pixels };
+}
+
+export function encodePatch(w, h, pixels) {
+  const cols = [];
+  for (let x = 0; x < w; x++) {
+    const col = [];
+    let y = 0;
+    while (y < h) {
+      while (y < h && pixels[y * w + x] < 0) y++;
+      if (y >= h) break;
+      const start = y;
+      const run = [];
+      while (y < h && pixels[y * w + x] >= 0 && run.length < 128) run.push(pixels[y++ * w + x]);
+      col.push(start, run.length, 0, ...run, 0);
+    }
+    col.push(0xff);
+    cols.push(col);
+  }
+  const size = 8 + w * 4 + cols.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(size);
+  const v = new DataView(out.buffer);
+  v.setInt16(0, w, true);
+  v.setInt16(2, h, true);
+  let at = 8 + w * 4;
+  cols.forEach((c, x) => {
+    v.setInt32(8 + x * 4, at, true);
+    out.set(c, at);
+    at += c.length;
+  });
+  return out;
+}
+
+// Text drawn in the game's own HUD font (STCFNxxx), scaled up, as a patch:
+// what the intermission screen shows as the level's name.
+export function textPatch(wad, text, scale = 2) {
+  const glyphs = [];
+  for (const ch of text.toUpperCase()) {
+    const code = ch.charCodeAt(0);
+    const lump = code > 32 && code < 96 ? wad.find(`STCFN${String(code).padStart(3, '0')}`) : null;
+    glyphs.push(lump ? decodePatch(wad.data(lump)) : { w: 4, h: 0, pixels: new Int16Array(0) });
+  }
+  const h = Math.max(1, ...glyphs.map((g) => g.h));
+  const w = Math.max(1, glyphs.reduce((n, g) => n + g.w + 1, 0));
+  const pixels = new Int16Array(w * scale * h * scale).fill(-1);
+  let x0 = 0;
+  for (const g of glyphs) {
+    for (let y = 0; y < g.h; y++)
+      for (let x = 0; x < g.w; x++) {
+        const p = g.pixels[y * g.w + x];
+        if (p < 0) continue;
+        for (let sy = 0; sy < scale; sy++)
+          for (let sx = 0; sx < scale; sx++) pixels[(y * scale + sy) * w * scale + (x0 + x) * scale + sx] = p;
+      }
+    x0 += g.w + 1;
+  }
+  return encodePatch(w * scale, h * scale, pixels);
+}

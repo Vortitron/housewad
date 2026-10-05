@@ -9,8 +9,8 @@
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
 
-const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9 };
-const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4 };
+const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9, EXIT: 10 };
+const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4, COUNT: 8 };
 
 const MONSTER_SLOT_BASE = 2000;
 const MAX_MONSTERS = 14;
@@ -44,7 +44,7 @@ const isOn = (st) => !!st && st.state === 'on';
 const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
 
 export class HouseLink {
-  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, palette = null, onConfirm, log }) {
+  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, palette = null, cheats = {}, exitScene = null, onConfirm, log }) {
     this.engine = engine;
     this.m = engine.module;
     this.manifest = manifest;
@@ -54,6 +54,12 @@ export class HouseLink {
     this.log = log || (() => {});
     this.confirmUnlock = confirmUnlock;
     this.fliesOn = flies !== false;
+    this.cheats = cheats || {};
+    this.exitScene = exitScene;
+    this.tally = new Map();
+    this.last = null;
+    this.items = new Map(); // key -> { slot, room, present, pickedAt, tracker }
+    this.itemSlot = new Map(); // slot -> key
     this.onConfirm = onConfirm || (() => {});
     this.confirms = new Map();
     this.nextConfirm = 1;
@@ -64,7 +70,7 @@ export class HouseLink {
     this.nextSlot = MONSTER_SLOT_BASE;
     this.currentRoom = null;
     this.type = {};
-    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron'])
+    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron', 'redcard', 'bluecard', 'yellowcard', 'redskull', 'blueskull', 'yellowskull', 'backpack'])
       this.type[name] = this.m.ccall('hw_type', 'number', ['string'], [name]);
 
     this.roomInfo = new Map(manifest.rooms.map((r) => [r.id, r]));
@@ -172,8 +178,15 @@ export class HouseLink {
 
   // Engine calls ------------------------------------------------------------
 
-  message(text) {
+  // record: false for chatter (entering a room) that the status line shows
+  // anyway, so "last" stays the last thing that happened.
+  message(text, record = true) {
     this.m.ccall('hw_message', null, ['string'], [hudText(text)]);
+    if (record) this.last = { text, at: Date.now() };
+  }
+
+  count(what, n = 1) {
+    this.tally.set(what, (this.tally.get(what) || 0) + n);
   }
 
   sound(name, sector = -1) {
@@ -213,6 +226,8 @@ export class HouseLink {
           return this._confirmed(a, b === 1);
         case EV.HURT:
           return this._monsterHurt(a, b, c === 1);
+        case EV.EXIT:
+          return this._levelExit(b, c);
         default:
           return undefined;
       }
@@ -224,6 +239,9 @@ export class HouseLink {
 
   _levelReady() {
     this.ready = true;
+    this.tally = new Map();
+    this.items.clear();
+    this.itemSlot.clear();
     this.monsters.clear();
     this.slotKey.clear();
     this.currentRoom = null;
@@ -241,6 +259,7 @@ export class HouseLink {
     const r = this.actions.call(lamp.entity, 'turn_off');
     if (r.ok) {
       this.m._hw_set_lamp(slot, 0);
+      this.count('lights switched off');
       this.message(`${friendlyName(this._hass(), lamp.entity)}: off`);
     } else if (r.reason === 'not-allowed') {
       this.message(`${lamp.entity} is not on the allowlist`);
@@ -298,7 +317,10 @@ export class HouseLink {
     const fly = mon.spec.fly;
     const strength = Math.round(Math.max(0.2, Math.min(3, 0.4 + damage / 20)) * 10) / 10;
     const r = this.actions.call(fly.mode, 'loom', { strength }, 'fly_house', true);
-    if (r.ok) this.message(`${fly.name}: loomed. Escape neurons firing.`);
+    if (r.ok) {
+      this.count('flies loomed');
+      this.message(`${fly.name}: loomed. Escape neurons firing.`);
+    }
   }
 
   _flyInFront(facing) {
@@ -316,7 +338,10 @@ export class HouseLink {
   _feed(mon) {
     const fly = mon.spec.fly;
     const r = this.actions.call(fly.mode, 'feed', { amount: 1 }, 'fly_house', true);
-    if (r.ok) this.message(`${fly.name}: fed. Dopamine.`);
+    if (r.ok) {
+      this.count('flies fed');
+      this.message(`${fly.name}: fed. Dopamine.`);
+    }
     return true;
   }
 
@@ -467,6 +492,20 @@ export class HouseLink {
   }
 
   _slotGone(slot) {
+    const itemKey = this.itemSlot.get(slot);
+    if (itemKey) {
+      this.itemSlot.delete(slot);
+      const it = this.items.get(itemKey);
+      if (it && it.present && !it.removing) {
+        // Picked up by the player: say where the real thing is.
+        it.present = false;
+        it.pickedAt = Date.now();
+        const where = this.houseRoom.get(it.room);
+        this.count('things found');
+        this.message(`Found: ${it.tracker.name}. It's in the ${where ? where.name : 'house'}.`);
+      }
+      return;
+    }
     const key = this.slotKey.get(slot);
     if (!key) return;
     const mon = this.monsters.get(key);
@@ -518,6 +557,7 @@ export class HouseLink {
           const lamp = this.manifest.lamps.find((l) => l.entity === light.entity_id);
           want.set(`soul:${light.entity_id}`, {
             type: 'lostsoul',
+            problem: true,
             room: room.id,
             near: lamp ? [lamp.x, lamp.y] : null,
             label: `Wasted light: ${friendlyName(hass, light.entity_id)}`,
@@ -534,6 +574,7 @@ export class HouseLink {
         if (!(watts >= r.standby_min && watts <= r.standby_max)) continue;
         want.set(`zombie:${sw.entity_id}`, {
           type: 'zombieman',
+          problem: true,
           room: room.id,
           label: `Standby hog: ${friendlyName(hass, sw.entity_id)} (${watts} W)`,
           respawn: 20000,
@@ -561,6 +602,7 @@ export class HouseLink {
         if (!heating || !isOn(a.state(w.entity_id))) continue;
         want.set(`caco:${w.entity_id}`, {
           type: 'cacodemon',
+          problem: true,
           room: room.id,
           label: `${friendlyName(hass, w.entity_id)} open with the heating on`,
           onKill: () => this.message(`Now go and close ${friendlyName(hass, w.entity_id)} yourself.`),
@@ -571,9 +613,11 @@ export class HouseLink {
       for (const v of room.vacuums) {
         const st = a.state(v.entity_id);
         const cleaning = !!st && ['cleaning', 'on'].includes(st.state);
+        // Out cleaning and saying where: the demon is in that room.
+        const there = cleaning && v.roomSensor ? this._roomByName(a.state(v.roomSensor)?.state) : null;
         want.set(`vac:${v.entity_id}`, {
           type: 'demon',
-          room: room.id,
+          room: there || room.id,
           dormant: !cleaning,
           vacuum: true,
           label: friendlyName(hass, v.entity_id),
@@ -591,8 +635,10 @@ export class HouseLink {
   _killAction(entityId, service, done) {
     const r = this.actions.call(entityId, service);
     const name = friendlyName(this._hass(), entityId);
-    if (r.ok) this.message(`${name}: ${done}`);
-    else if (r.reason === 'not-allowed') this.message(`${entityId} is not on the allowlist`);
+    if (r.ok) {
+      this.count({ turn_off: entityId.startsWith('light.') ? 'lights switched off' : 'plugs switched off', return_to_base: 'vacuums sent home' }[service] || 'things fixed');
+      this.message(`${name}: ${done}`);
+    } else if (r.reason === 'not-allowed') this.message(`${entityId} is not on the allowlist`);
   }
 
   _spawnMonster(key, spec, fog) {
@@ -600,7 +646,7 @@ export class HouseLink {
     if (!slot) slot = this.nextSlot++;
     const spot = this._spotFor(spec, key);
     if (!spot) return;
-    const flags = (fog ? SPAWN.FOG : 0) | (spec.dormant ? SPAWN.DORMANT : 0);
+    const flags = (fog ? SPAWN.FOG : 0) | (spec.dormant ? SPAWN.DORMANT : 0) | (spec.problem ? SPAWN.COUNT : 0);
     if (!this.m._hw_spawn(slot, this.type[spec.type], spot[0], spot[1], 90, flags)) return;
     this.slotKey.set(slot, key);
     this.monsters.set(key, { slot, alive: true, killedAt: 0, dormant: !!spec.dormant, spec, spot });
@@ -701,6 +747,13 @@ export class HouseLink {
         this.slotKey.delete(mon.slot);
         continue;
       }
+      if (state === 1 && spec.room !== mon.spec.room) {
+        // It moved to another room in the real house: so does the monster.
+        this.m._hw_remove(mon.slot, 1);
+        this.monsters.delete(key);
+        this.slotKey.delete(mon.slot);
+        continue;
+      }
       if (spec.vacuum) {
         if (state === 1 && spec.dormant && !mon.dormant && now - (mon.wokenAt || 0) > 15000) {
           // Gone back to the dock (or never left it): back to sleep.
@@ -727,6 +780,141 @@ export class HouseLink {
       alive++;
     }
     this._steerFlies();
+    this._syncItems();
+  }
+
+  // The exit: Doom shows its tally screen (kills = house problems fixed);
+  // the status line says what was actually done, and a configured scene runs.
+  _levelExit(kills, total) {
+    const one = {
+      'lights switched off': 'light switched off',
+      'plugs switched off': 'plug switched off',
+      'vacuums sent home': 'vacuum sent home',
+      'flies loomed': 'fly loomed',
+      'flies fed': 'fly fed',
+      'things fixed': 'thing fixed',
+    };
+    const parts = [...this.tally].map(([what, n]) => `${n} ${n === 1 ? one[what] || what : what}`);
+    const summary = parts.length ? `You left the house: ${parts.join(', ')}.` : 'You left the house. Nothing fixed.';
+    if (this.exitScene) this._runEntity(this.exitScene, 'leaving home');
+    this.last = { text: summary, at: Date.now() };
+    this.lastExit = { kills, total, parts };
+  }
+
+  // Run whatever an entity id names: a scene, script, automation, button, or
+  // anything that toggles. Things the owner named in the card config count
+  // as allowed; they chose them.
+  _runEntity(entityId, why) {
+    const domain = entityId.split('.')[0];
+    const service =
+      { scene: 'turn_on', script: 'turn_on', automation: 'trigger', button: 'press', input_button: 'press' }[domain] || 'toggle';
+    const r = this.actions.call(entityId, service, {}, domain, true);
+    if (r.ok) this.message(`${friendlyName(this._hass(), entityId)}: ${why}`);
+    return r.ok;
+  }
+
+  // Cheat codes typed in the game. Doom's own still work as well.
+  runCheat(code) {
+    const target = this.cheats[code];
+    if (target) return this._runEntity(target, code);
+    if (code === 'idbeholdl') {
+      // Light amplification: every light the game may touch comes on.
+      let n = 0;
+      for (const room of this.house.rooms) {
+        for (const l of room.lights) {
+          if (isOn(this.actions.state(l.entity_id))) continue;
+          if (this.actions.call(l.entity_id, 'turn_on').ok) n++;
+        }
+      }
+      this.message(n ? `Light amplification: ${n} lights on` : 'Light amplification');
+      return true;
+    }
+    return false;
+  }
+
+  // Room names as Home Assistant states give them ("Kitchen", "kitchen").
+  _roomByName(name) {
+    if (!name) return null;
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9åäöæøü]/g, '');
+    const n = norm(name);
+    const room = this.house.rooms.find((r) => norm(r.name) === n || norm(r.id) === n);
+    return room && this.roomInfo.has(room.id) ? room.id : null;
+  }
+
+  // Tagged things (keys, wallet, bag) lie in whichever room Bluetooth says
+  // they are in. Pick one up and the game tells you where the real one is.
+  _syncItems() {
+    const now = Date.now();
+    for (const t of this.house.trackers || []) {
+      const key = `tag:${t.entity_id}`;
+      const roomId = this._roomByName(this.actions.state(t.entity_id)?.state);
+      let it = this.items.get(key);
+      if (it && it.room !== roomId) {
+        if (it.present && this.m._hw_slot_state(it.slot)) {
+          it.removing = true;
+          this.m._hw_remove(it.slot, 0);
+        }
+        this.items.delete(key);
+        it = null;
+      }
+      if (!roomId || (it && (it.present || now - it.pickedAt < 120000))) continue;
+      const n = t.name.toLowerCase();
+      const type = /key|nyckel/.test(n) ? 'redcard' : /wallet|purse|plånbok/.test(n) ? 'yellowcard' : /bag|väska|ryggsäck/.test(n) ? 'backpack' : /phone|telefon|watch|klocka/.test(n) ? 'bluecard' : 'yellowskull';
+      const slot = (it && it.slot) || this.nextSlot++;
+      const spot = this._spotFor({ room: roomId, type }, key);
+      if (!spot || !this.m._hw_spawn(slot, this.type[type], spot[0], spot[1], 0, 0)) continue;
+      this.items.set(key, { slot, room: roomId, present: true, pickedAt: 0, tracker: t });
+      this.itemSlot.set(slot, key);
+    }
+  }
+
+  // What the player is looking at, for the status line.
+  aimed() {
+    if (!this.ready || !this.m._hw_aim(this.out)) return null;
+    const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 4);
+    const [slot, thingDist, line, lineDist] = [v[0], v[1], v[2], v[3]];
+    const useThing = slot && (line < 0 || thingDist <= lineDist);
+    return useThing ? this._describeSlot(slot) : line >= 0 ? this._describeLine(line) : null;
+  }
+
+  _stateText(entityId) {
+    const st = this.actions.state(entityId);
+    if (!st) return '';
+    if (entityId.startsWith('light.') && isOn(st) && st.attributes.brightness != null)
+      return `on, ${Math.round((st.attributes.brightness / 255) * 100)}%`;
+    return String(st.state).replace(/_/g, ' ');
+  }
+
+  _describeSlot(slot) {
+    const hass = this._hass();
+    const lamp = this.lampSlot.get(slot);
+    if (lamp) return `${friendlyName(hass, lamp.entity)} (${this._stateText(lamp.entity)})`;
+    const key = this.slotKey.get(slot);
+    const mon = key && this.monsters.get(key);
+    if (!mon) return null;
+    if (mon.spec.fly) return `${mon.spec.fly.name}, a fly brain (${this._stateText(mon.spec.fly.mode)})`;
+    if (mon.spec.vacuum) return `${mon.spec.label} (${this._stateText(key.slice(4))})`;
+    return mon.spec.label;
+  }
+
+  _describeLine(line) {
+    const ref = this.lines.get(line);
+    if (!ref) return null;
+    const hass = this._hass();
+    if (ref.kind === 'exit') return 'Exit: leave the house';
+    if (ref.kind === 'door') {
+      const d = this.doorById.get(ref.door);
+      if (!d) return null;
+      const bits = [d.lock && this._stateText(d.lock), d.cover && this._stateText(d.cover), d.sensor && (isOn(this.actions.state(d.sensor)) ? 'open' : 'shut')];
+      return `${d.name} (${bits.filter(Boolean).join(', ')})`;
+    }
+    return `${friendlyName(hass, ref.entity)} (${this._stateText(ref.entity)})`;
+  }
+
+  status() {
+    const p = this.ready ? this.player() : null;
+    const room = p && this.manifest.sectorRoom[p.sector];
+    return { room: room ? room.name : '', target: this.aimed(), last: this.last };
   }
 
   // Called a few times a second: room announcements.
@@ -744,7 +932,7 @@ export class HouseLink {
         const on = house.lights.filter((l) => isOn(this.actions.state(l.entity_id))).length;
         text += ` - ${on} of ${house.lights.length} lights on`;
       }
-      this.message(text);
+      this.message(text, false);
     }
   }
 

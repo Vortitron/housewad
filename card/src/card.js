@@ -11,15 +11,17 @@
 //   skill: 3               # 1 (too young to die) .. 5 (nightmare)
 //   confirm_unlock: true   # ask (Y/N) before unlocking a lock or opening a door cover
 //   flies: true            # HouseFly brains walk the level (shoot one: it gets loomed)
+//   exit_scene: scene.leaving_home   # the exit switch runs this
+//   cheats: { idcoffee: script.make_coffee }   # type a cheat code, run a thing
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
 import { buildHouse } from './model.js';
 import { generateMap } from './mapgen.js';
-import { writeWad, readWad } from './wad.js';
+import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW } from './actions.js';
-import { HouseLink } from './house.js';
+import { HouseLink, hudText } from './house.js';
 
 const VERSION = '0.1.0';
 const ASSETS = new URL('./', import.meta.url);
@@ -65,6 +67,13 @@ const STYLE = `
   .act { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
   .act div { width: 64px; height: 48px; }
   .hint { opacity: .6; }
+  .status { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 10px 0; min-height: 18px; font: 12px ui-monospace, Menlo, Consolas, monospace; }
+  .status span:empty { display: none; }
+  .status .where { font-weight: 800; color: #ff7a5c; }
+  .status .aim::before { content: 'Aiming at: '; opacity: .6; }
+  .status .last::before { content: 'Last: '; opacity: .6; }
+  .wrap:fullscreen { display: flex; flex-direction: column; justify-content: center; background: #000; color: #eee; }
+  .wrap:fullscreen .screen { width: auto; height: calc(100vh - 64px); max-width: 100vw; margin: 0 auto; }
   .confirm { position: absolute; left: 0; right: 0; bottom: 22%; display: none; justify-content: center; gap: 16px; }
   .confirm.on { display: flex; }
   .confirm button { font-size: 18px; padding: 10px 28px; }
@@ -166,6 +175,14 @@ class HouseWadCard extends HTMLElement {
         import(/* @vite-ignore */ new URL('housewad-engine.js', base).href),
         loadIwad(base),
       ]);
+      // The tally screen names the level with a picture: make one of the home.
+      const home = hudText((this._hass.config && this._hass.config.location_name) || 'Home').slice(0, 24);
+      try {
+        const title = textPatch(readWad(iwad), home);
+        lumps.push({ name: 'CWILV00', data: title }, { name: 'CWILV01', data: title });
+      } catch (e) {
+        // Freedoom's own titles will do.
+      }
       const pwad = await buildNodes(createZdbsp, writeWad(lumps), { wasmUrl: new URL('housewad-zdbsp.wasm', base).href });
       this._renderGame(mode);
       const canvas = this.shadowRoot.querySelector('canvas');
@@ -187,6 +204,10 @@ class HouseWadCard extends HTMLElement {
         args: ['-iwad', 'freedoom2.wad', '-file', 'house.wad', '-warp', '1', '-skill', String(this.config.skill || 3)],
         onHouseEvent: (...e) => (this.link ? this.link.onEvent(...e) : pending.push(e)),
         onFatal: (message) => setTimeout(() => this._renderStart(`The game stopped: ${message}`), 0),
+        beforeMain: (m) => {
+          const home = (this._hass.config && this._hass.config.location_name) || 'Home';
+          m.ccall('hw_level_title', null, ['string'], [hudText(`MAP01: ${home}`)]);
+        },
         print: (s) => this.config.debug && console.log('[housewad]', s),
       });
       this.link = new HouseLink({
@@ -197,6 +218,8 @@ class HouseWadCard extends HTMLElement {
         rules: this.config.rules || {},
         confirmUnlock: this.config.confirm_unlock !== false,
         flies: this.config.flies,
+        cheats: Object.fromEntries(Object.entries(this.config.cheats || {}).map(([k, v]) => [k.toLowerCase(), v])),
+        exitScene: this.config.exit_scene || null,
         palette: playpal(iwad),
         onConfirm: (pending) => {
           const box = this.shadowRoot.querySelector('.confirm');
@@ -210,6 +233,7 @@ class HouseWadCard extends HTMLElement {
       this._bindInput();
       this.timers.push(setInterval(() => this.link && this.link.tick(), 250));
       this.timers.push(setInterval(() => this.link && this.link.cameraTick(), 300));
+      this.timers.push(setInterval(() => this._showStatus(), 250));
       this.timers.push(setInterval(() => this.link && this.link.sync(), 1000));
       this.shadowRoot.querySelector('.screen').focus();
     } catch (e) {
@@ -223,6 +247,7 @@ class HouseWadCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${STYLE}</style>
       <ha-card>
+        <div class="wrap">
         <div class="screen" tabindex="0" aria-label="house.wad game. Click to capture the mouse.">
           <canvas width="320" height="200"></canvas>
           <div class="confirm">
@@ -241,17 +266,23 @@ class HouseWadCard extends HTMLElement {
             </div>
           </div>
         </div>
+        <div class="status" aria-live="polite">
+          <span class="where"></span>
+          <span class="aim"></span>
+          <span class="last"></span>
+        </div>
         <div class="bar">
           <span class="mode ${mode}">${mode === 'real' ? 'LIVE: THIS IS YOUR HOUSE' : 'PRACTICE'}</span>
           <span class="spacer"></span>
           <button class="full">Full screen</button>
           <button class="quit">Quit</button>
         </div>
+        </div>
       </ha-card>`;
     this.shadowRoot.querySelector('button.quit').addEventListener('click', () => this._renderStart());
     this.shadowRoot.querySelector('button.full').addEventListener('click', () => {
-      const screen = this.shadowRoot.querySelector('.screen');
-      if (screen.requestFullscreen) screen.requestFullscreen();
+      const wrap = this.shadowRoot.querySelector('.wrap');
+      if (wrap.requestFullscreen) wrap.requestFullscreen();
     });
   }
 
@@ -265,7 +296,9 @@ class HouseWadCard extends HTMLElement {
       if (engine.handleKeyboard(e)) {
         e.preventDefault();
         e.stopPropagation();
-        if (e.type === 'keydown' && !e.repeat && (e.code === 'KeyE' || e.code === 'Space')) this.link && this.link.useNearLamp();
+        const midCheat = e.code === 'KeyE' && this._midCheat();
+        if (e.type === 'keydown' && /^[a-z0-9]$/i.test(e.key)) this._typed(e.key.toLowerCase());
+        if (e.type === 'keydown' && !e.repeat && !midCheat && (e.code === 'KeyE' || e.code === 'Space')) this.link && this.link.useNearLamp();
       }
     };
     screen.addEventListener('keydown', onKey);
@@ -314,6 +347,40 @@ class HouseWadCard extends HTMLElement {
       el.addEventListener('pointerleave', up);
       el.addEventListener('pointercancel', up);
     }
+  }
+
+  // Halfway through typing a cheat code? (Its "e" is not a lamp switch.)
+  _midCheat() {
+    const buf = this.typedBuf || '';
+    const codes = ['idbeholdl', ...Object.keys((this.link && this.link.cheats) || {})];
+    return codes.some((c) => {
+      for (let n = 2; n < c.length; n++) if (buf.endsWith(c.slice(0, n))) return true;
+      return false;
+    });
+  }
+
+  _typed(ch) {
+    this.typedBuf = ((this.typedBuf || '') + ch).slice(-24);
+    if (!this.link) return;
+    const codes = ['idbeholdl', ...Object.keys(this.link.cheats)];
+    const hit = codes.find((c) => this.typedBuf.endsWith(c));
+    if (hit) {
+      this.typedBuf = '';
+      this.link.runCheat(hit);
+    }
+  }
+
+  _showStatus() {
+    if (!this.link) return;
+    const s = this.link.status();
+    const set = (cls, text) => {
+      const el = this.shadowRoot.querySelector(`.status .${cls}`);
+      if (el && el.textContent !== text) el.textContent = text;
+    };
+    set('where', s.room || '');
+    set('aim', s.target || '');
+    const age = s.last ? Math.round((Date.now() - s.last.at) / 1000) : 0;
+    set('last', s.last ? `${s.last.text}${age > 2 ? ` (${age < 90 ? age + 's' : Math.round(age / 60) + 'm'} ago)` : ''}` : '');
   }
 
   _queueSync() {

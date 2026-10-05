@@ -149,6 +149,13 @@ export function generateMap(house) {
     });
     b.addRect(corridor, x, -CORRIDOR / 2, x + corridorLen, CORRIDOR / 2);
     if (floor.id === groundFloor.id) {
+      // The way out: Doom's exit switch in a little alcove by the start.
+      const alcove = b.addSector({ floor: z, ceil: z + 72, floorTex: 'FLAT5_4', ceilTex: 'CEIL3_5', wall: 'DOORTRAK', light: 192, priority: 0 });
+      b.addRect(alcove, x + 16, CORRIDOR / 2, x + 48, CORRIDOR / 2 + WALL);
+      b.addFeature([x + 16, CORRIDOR / 2 + WALL], [x + 48, CORRIDOR / 2 + WALL], { mid: 'SW1EXIT', special: 11, ref: { kind: 'exit' } });
+      b.addFeature([x + 16, CORRIDOR / 2], [x + 16, CORRIDOR / 2 + WALL], { mid: 'DOORTRAK', flags: ML.DONTPEGBOTTOM });
+      b.addFeature([x + 48, CORRIDOR / 2], [x + 48, CORRIDOR / 2 + WALL], { mid: 'DOORTRAK', flags: ML.DONTPEGBOTTOM });
+      manifest.sectorRoom[alcove] = { id: `_corridor_${floor.id}`, name: floor.name || 'Corridor' };
       manifest.start = { x: x + 64, y: 0, z };
       b.addThing(x + 64, 0, THING.PLAYER1, 0);
       b.addThing(x + 128, 32, THING.SHOTGUN);
