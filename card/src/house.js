@@ -262,7 +262,7 @@ export class HouseLink {
       this.count('lights switched off');
       this.message(`${friendlyName(this._hass(), lamp.entity)}: off`);
     } else if (r.reason === 'not-allowed') {
-      this.message(`${lamp.entity} is not on the allowlist`);
+      this._refused(lamp.entity, r);
     }
   }
 
@@ -296,7 +296,7 @@ export class HouseLink {
       this.sound('swtchn');
       this.message(`${name}: ${service === 'turn_on' ? 'on' : 'off'}`);
     } else if (r.reason === 'not-allowed') {
-      this.message(`${best.lamp.entity} is not on the allowlist`);
+      this._refused(best.lamp.entity, r);
     }
     return true;
   }
@@ -409,7 +409,7 @@ export class HouseLink {
     if (r.ok) this.message(`${name}: ${applied()}`);
     else if (r.reason === 'not-allowed') {
       this.sound('noway');
-      this.message(`${entityId} is not on the allowlist`);
+      this._refused(entityId, r);
     }
   }
 
@@ -632,13 +632,18 @@ export class HouseLink {
     return want;
   }
 
+  _refused(entityId, r) {
+    if (r.important) this.message(`${friendlyName(this._hass(), entityId)} looks important. Allow it by name.`);
+    else this.message(`${entityId} is not on the allowlist`);
+  }
+
   _killAction(entityId, service, done) {
     const r = this.actions.call(entityId, service);
     const name = friendlyName(this._hass(), entityId);
     if (r.ok) {
       this.count({ turn_off: entityId.startsWith('light.') ? 'lights switched off' : 'plugs switched off', return_to_base: 'vacuums sent home' }[service] || 'things fixed');
       this.message(`${name}: ${done}`);
-    } else if (r.reason === 'not-allowed') this.message(`${entityId} is not on the allowlist`);
+    } else if (r.reason === 'not-allowed') this._refused(entityId, r);
   }
 
   _spawnMonster(key, spec, fog) {

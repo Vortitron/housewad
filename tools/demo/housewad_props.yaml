@@ -1,0 +1,177 @@
+# house.wad props for the HouseFly demo home: the things the house.wad clip
+# needs that the demo house does not have. All simulated: every device is a
+# template over a helper, as in demo_house.yaml. Nothing here touches hardware.
+#
+# Copy to config/packages/housewad_props.yaml and restart.
+
+input_boolean:
+  hw_front_door_locked:
+    name: Front door locked helper
+    initial: true
+  hw_front_door_open:
+    name: Front door open helper
+    initial: false
+  hw_garage_door_open:
+    name: Garage door open helper
+    initial: false
+  hw_tv_plug:
+    name: TV plug helper
+    initial: true
+  hw_bedroom_window_open:
+    name: Bedroom window open helper
+    initial: true
+  hw_bedroom_radiator:
+    name: Bedroom radiator helper
+
+input_select:
+  hw_vacuum_state:
+    name: Robot vacuum state helper
+    options: [docked, cleaning, returning, paused]
+    initial: docked
+  hw_vacuum_room:
+    name: Robot vacuum room helper
+    options: [Hallway, Kitchen, Living Room, Bedroom]
+    initial: Hallway
+  hw_car_keys_room:
+    name: Car keys room helper
+    options: [Hallway, Kitchen, Living Room, Bedroom, Garden]
+    initial: Kitchen
+
+template:
+  - lock:
+      - name: Front Door
+        unique_id: housewad_front_door
+        state: "{{ is_state('input_boolean.hw_front_door_locked', 'on') }}"
+        lock:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.hw_front_door_locked
+        unlock:
+          - delay: 1
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.hw_front_door_locked
+    cover:
+      - name: Garage Door
+        unique_id: housewad_garage_door
+        device_class: garage
+        state: "{{ 'open' if is_state('input_boolean.hw_garage_door_open', 'on') else 'closed' }}"
+        open_cover:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.hw_garage_door_open
+        close_cover:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.hw_garage_door_open
+    vacuum:
+      - name: Robot Vacuum
+        unique_id: housewad_robot_vacuum
+        state: "{{ states('input_select.hw_vacuum_state') }}"
+        start:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.hw_vacuum_state
+            data:
+              option: cleaning
+        pause:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.hw_vacuum_state
+            data:
+              option: paused
+        return_to_base:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.hw_vacuum_state
+            data:
+              option: returning
+    switch:
+      - name: TV Plug
+        unique_id: housewad_tv_plug
+        state: "{{ is_state('input_boolean.hw_tv_plug', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.hw_tv_plug
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.hw_tv_plug
+      - name: Bedroom Radiator
+        unique_id: housewad_bedroom_radiator
+        state: "{{ is_state('input_boolean.hw_bedroom_radiator', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.hw_bedroom_radiator
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.hw_bedroom_radiator
+    sensor:
+      # On, but only drawing standby power: a zombieman in the living room.
+      - name: TV Plug Power
+        unique_id: housewad_tv_plug_power
+        device_class: power
+        unit_of_measurement: W
+        state: "{{ 4.2 if is_state('input_boolean.hw_tv_plug', 'on') else 0 }}"
+      - name: Robot Vacuum Current room
+        unique_id: housewad_robot_vacuum_room
+        state: "{{ states('input_select.hw_vacuum_room') }}"
+      - name: Car Keys Area
+        unique_id: housewad_car_keys_area
+        icon: mdi:key
+        state: "{{ states('input_select.hw_car_keys_room') }}"
+    binary_sensor:
+      - name: Front Door Contact
+        unique_id: housewad_front_door_contact
+        device_class: door
+        state: "{{ is_state('input_boolean.hw_front_door_open', 'on') }}"
+      - name: Bedroom Window
+        unique_id: housewad_bedroom_window
+        device_class: window
+        state: "{{ is_state('input_boolean.hw_bedroom_window_open', 'on') }}"
+
+# The window is open while this heats the bedroom: a cacodemon.
+climate:
+  - platform: generic_thermostat
+    name: Bedroom Heating
+    unique_id: housewad_bedroom_heating
+    heater: switch.bedroom_radiator
+    target_sensor: sensor.bedroom_temperature
+    target_temp: 22
+    initial_hvac_mode: heat
+
+automation:
+  - id: housewad_vacuum_docks
+    alias: "house.wad props: the vacuum gets home"
+    triggers:
+      - trigger: state
+        entity_id: input_select.hw_vacuum_state
+        to: returning
+        for: "00:00:15"
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.hw_vacuum_state
+        data:
+          option: docked
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.hw_vacuum_room
+        data:
+          option: Hallway
+  - id: housewad_vacuum_wanders
+    alias: "house.wad props: the vacuum goes room to room"
+    triggers:
+      - trigger: time_pattern
+        seconds: "/12"
+    conditions:
+      - condition: state
+        entity_id: input_select.hw_vacuum_state
+        state: cleaning
+    actions:
+      - action: input_select.select_next
+        target:
+          entity_id: input_select.hw_vacuum_room

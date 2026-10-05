@@ -63,3 +63,23 @@ test('add-on switches from the Supervisor are not part of the house', () => {
   const all = buildHouse(hass).rooms.flatMap((r) => r.switches.map((s) => s.entity_id));
   assert.ok(!all.includes('switch.vome'));
 });
+
+test('template devices pair by name: plug power, vacuum room, tag area', () => {
+  const hass = makeFakeHass();
+  const add = (id, state, attributes, area) => {
+    hass.states[id] = { entity_id: id, state, attributes };
+    hass.entities[id] = { entity_id: id, area_id: area, platform: 'template' };
+  };
+  add('switch.lamp_plug', 'on', { friendly_name: 'Lamp Plug' }, 'bedroom');
+  add('sensor.lamp_plug_power', '3', { device_class: 'power' }, 'bedroom');
+  add('vacuum.robo2', 'docked', { friendly_name: 'Robo 2' }, 'kitchen');
+  add('sensor.robo2_current_room', 'Kitchen', {}, 'kitchen');
+  add('sensor.wallet_area', 'Office', { friendly_name: 'Wallet Area' }, null);
+  add('sensor.weird_area', 'not a room', { friendly_name: 'Weird Area' }, null);
+  const house = buildHouse(hass);
+  const bedroom = house.rooms.find((r) => r.id === 'bedroom');
+  assert.equal(bedroom.switches.find((s) => s.entity_id === 'switch.lamp_plug').power, 'sensor.lamp_plug_power');
+  const kitchen = house.rooms.find((r) => r.id === 'kitchen');
+  assert.equal(kitchen.vacuums.find((v) => v.entity_id === 'vacuum.robo2').roomSensor, 'sensor.robo2_current_room');
+  assert.deepEqual(house.trackers.map((t) => t.entity_id).sort(), ['sensor.car_keys_area', 'sensor.wallet_area']);
+});

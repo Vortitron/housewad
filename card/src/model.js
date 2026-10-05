@@ -151,10 +151,14 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     const dev = deviceOf(entityId);
     if (dev && !roomSensorByDevice.has(dev)) roomSensorByDevice.set(dev, entityId);
   }
+  // Without a device (template entities), go by name: sensor.<vacuum>_current_room.
+  const objectId = (entityId) => entityId.split('.')[1];
   for (const room of rooms.values()) {
     for (const v of room.vacuums) {
       const dev = deviceOf(v.entity_id);
+      const byName = `sensor.${objectId(v.entity_id)}_current_room`;
       if (dev && roomSensorByDevice.has(dev)) v.roomSensor = roomSensorByDevice.get(dev);
+      else if (hass.states[byName]) v.roomSensor = byName;
     }
   }
 
@@ -162,7 +166,9 @@ export function buildHouse(hass, { exclude = [] } = {}) {
   for (const room of rooms.values()) {
     for (const sw of room.switches) {
       const dev = deviceOf(sw.entity_id);
+      const byName = `sensor.${sw.entity_id.split('.')[1]}_power`;
       if (dev && powerByDevice.has(dev)) sw.power = powerByDevice.get(dev);
+      else if (hass.states[byName]?.attributes?.device_class === 'power') sw.power = byName;
     }
   }
 
@@ -244,7 +250,10 @@ export function findTrackers(hass, exclude = []) {
     if (!entityId.startsWith('sensor.')) continue;
     const reg = entities[entityId] || {};
     const bermuda = reg.platform === 'bermuda' && entityId.endsWith('_area');
-    if (!bermuda && reg.platform !== 'mqtt_room') continue;
+    // Any other "<thing>_area" sensor whose state is one of the home's areas.
+    const areaNames = new Set(Object.values(hass.areas || {}).map((a) => String(a.name).toLowerCase()));
+    const named = entityId.endsWith('_area') && areaNames.has(String(hass.states[entityId].state).toLowerCase());
+    if (!bermuda && !named && reg.platform !== 'mqtt_room') continue;
     if (exclude.some((p) => matches(p, entityId))) continue;
     const name = (hass.states[entityId].attributes.friendly_name || entityId).replace(/ Area$/, '');
     out.push({ entity_id: entityId, name });

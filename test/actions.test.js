@@ -32,7 +32,7 @@ test('real mode calls Home Assistant; refuses what is not allowed', async () => 
   const hass = hassWith({ 'light.a': st('on'), 'lock.door': st('locked') });
   const a = new HouseActions({ getHass: () => hass, mode: 'real', allow: makeAllow(DEFAULT_ALLOW) });
   assert.deepEqual(a.call('light.a', 'turn_off'), { ok: true });
-  assert.deepEqual(a.call('lock.door', 'unlock'), { ok: false, reason: 'not-allowed' });
+  assert.equal(a.call('lock.door', 'unlock').reason, 'not-allowed');
   await tick(10);
   assert.deepEqual(hass.calls, ['light.turn_off light.a']);
   a.close();
@@ -70,5 +70,26 @@ test('practice mode never calls the house and plays changes out locally', async 
   assert.equal(a.state('vacuum.v').state, 'cleaning');
   assert.equal(a.state('lock.door').state, 'unlocking');
   assert.equal(hass.states['light.a'].state, 'on', 'the real state is untouched');
+  a.close();
+});
+
+test('switches that look important need naming, not a pattern', async () => {
+  const { looksImportant } = await import('../card/src/actions.js');
+  const allow = makeAllow(['switch.*', 'light.*', 'switch.kettle_plug']);
+  assert.equal(allow.verdict('switch.freezer_socket', 'Freezer Socket'), 'important');
+  assert.equal(allow.verdict('switch.network_rack'), 'important');
+  assert.equal(allow.verdict('switch.plug_3', 'Garage Door Motor'), 'important');
+  assert.equal(allow.verdict('switch.kettle_plug', 'Kettle'), 'yes', 'named exactly');
+  assert.equal(allow.verdict('switch.tv_plug', 'TV Plug'), 'yes');
+  assert.equal(allow.verdict('switch.wellness_lamp', 'Wellness lamp'), 'important', 'word starts count, cautiously');
+  assert.equal(allow.verdict('light.front_door', 'Front Door Light'), 'yes', 'lights are never dangerous');
+  assert.ok(!looksImportant('switch.scarecrow'), 'car only as a word start');
+  assert.ok(looksImportant('switch.car_charger'));
+});
+
+test('a refused important switch says why', async () => {
+  const hass = hassWith({ 'switch.freezer': st('on', { friendly_name: 'Freezer' }) });
+  const a = new HouseActions({ getHass: () => hass, mode: 'real', allow: makeAllow(['switch.*']) });
+  assert.deepEqual(a.call('switch.freezer', 'turn_off'), { ok: false, reason: 'not-allowed', important: true });
   a.close();
 });

@@ -17,6 +17,28 @@ const MIN_GAP_GLOBAL = 200; // ms between calls; extra calls wait their turn
 const MAX_QUEUE = 8;
 const STROBE_DOMAINS = ['light', 'switch'];
 
+// Switches whose names suggest they matter (borrowed from HouseFly's safety
+// layer). A pattern like switch.* never reaches them; naming one exactly in
+// the allowlist does, because then somebody chose it.
+export const IMPORTANT_HINTS = [
+  'boiler', 'heater', 'heating', 'furnace', 'immersion',
+  'freezer', 'fridge', 'refrigerator',
+  'pump', 'sump', 'well',
+  'oven', 'hob', 'stove', 'kettle',
+  'server', 'nas', 'router', 'modem', 'network', 'firewall',
+  'alarm', 'siren', 'smoke', 'security', 'door', 'gate', 'garage',
+  'medical', 'oxygen', 'cpap',
+  'charger', 'ev_', 'car',
+  'irrigation', 'sprinkler',
+];
+const IMPORTANT_DOMAINS = ['switch'];
+
+export function looksImportant(entityId, name = '') {
+  if (!IMPORTANT_DOMAINS.includes(entityId.split('.')[0])) return false;
+  const words = `${entityId} ${name}`.toLowerCase().replace(/[^a-z0-9_]+/g, ' ');
+  return IMPORTANT_HINTS.some((h) => new RegExp(`(^|[ ._])${h.replace('_', '_?')}`).test(words));
+}
+
 export function makeAllow(patterns = DEFAULT_ALLOW) {
   const warnings = [];
   const usable = [];
@@ -28,10 +50,20 @@ export function makeAllow(patterns = DEFAULT_ALLOW) {
     }
     usable.push(p);
   }
+  const exact = new Set(usable.filter((p) => !p.includes('*')));
   return {
     patterns: usable,
     warnings,
-    allows: (entityId) => usable.some((p) => matches(p, entityId)),
+    // 'yes', 'no', or 'important' (matched only by a pattern, and it looks
+    // like something that matters).
+    verdict(entityId, name = '') {
+      if (exact.has(entityId)) return 'yes';
+      if (!usable.some((p) => matches(p, entityId))) return 'no';
+      return looksImportant(entityId, name) ? 'important' : 'yes';
+    },
+    allows(entityId, name = '') {
+      return this.verdict(entityId, name) === 'yes';
+    },
   };
 }
 
@@ -63,13 +95,21 @@ export class HouseActions {
   }
 
   allowed(entityId) {
-    return this.mode === 'practice' || this.allow.allows(entityId);
+    return this.mode === 'practice' || this.allow.allows(entityId, this._name(entityId));
+  }
+
+  _name(entityId) {
+    const st = this.state(entityId);
+    return (st && st.attributes && st.attributes.friendly_name) || '';
   }
 
   // Returns { ok, reason } straight away; the house catches up later.
   // domain defaults to the entity's own (fly_house.loom targets a sensor).
   call(entityId, service, data = {}, domain = domainOf(entityId), allowedAnyway = false) {
-    if (!allowedAnyway && !this.allowed(entityId)) return { ok: false, reason: 'not-allowed' };
+    if (!allowedAnyway && !this.allowed(entityId)) {
+      const important = this.allow.verdict(entityId, this._name(entityId)) === 'important';
+      return { ok: false, reason: 'not-allowed', important };
+    }
     const now = Date.now();
     // Lights and plugs are limited per entity (flicker is the risk); anything
     // else only per action, so waking the vacuum then killing it both count.
