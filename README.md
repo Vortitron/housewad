@@ -118,7 +118,8 @@ The default allowlist is lights, switches, media players and vacuums. Locks and 
 
 - The card acts as the logged-in Home Assistant user, so it can only do what that user can do.
 - Everything outside the allowlist shows up in the game but cannot be changed from it.
-- A switch whose name suggests it matters (freezer, boiler, pump, router, network, garage, charger and the like) is never reached by a pattern such as `switch.*`. Name it exactly in `allow` if you really mean it. (The list comes from [HouseFly](https://github.com/Vortitron/HouseFly)'s safety layer.)
+- A switch that looks like it matters is never reached by a pattern such as `switch.*`. That means its name (freezer, boiler, hot water, pump, router, dishwasher, battery, VM and the like), the integration behind it (hypervisors, NAS, PDUs and UPSes, network gear, appliances, solar, batteries, EV chargers) or its room (comms, server, network, rack, plant room). Name it exactly in `allow` if you really mean it. (The name list started from [HouseFly](https://github.com/Vortitron/HouseFly)'s safety layer.)
+- On a real house, start with `allow: [light.*]` and Practice, then add what you want. Check what a pattern reaches before you play: the start screen counts the switches it found.
 - Each light or plug can be switched at most once every 1.5 seconds. A chaingun on a bulb would otherwise be a strobe light, and a flood on your Zigbee network.
 - Unlocking a lock or opening a door cover always asks first, in Doom's own Y/N box, unless you turn that off.
 - Only the player can trigger the house. Monsters fighting each other, or an imp's fireball hitting a lamp, change nothing.

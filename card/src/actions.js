@@ -17,26 +17,62 @@ const MIN_GAP_GLOBAL = 200; // ms between calls; extra calls wait their turn
 const MAX_QUEUE = 8;
 const STROBE_DOMAINS = ['light', 'switch'];
 
-// Switches whose names suggest they matter (borrowed from HouseFly's safety
-// layer). A pattern like switch.* never reaches them; naming one exactly in
-// the allowlist does, because then somebody chose it.
+// Switches that look like they matter. A pattern like switch.* never reaches
+// them; naming one exactly in the allowlist does, because then somebody
+// chose it. Names alone miss too much on a real home (a PDU's outlets, a
+// hypervisor's VMs, a home battery), so the integration behind a switch and
+// the room it is in count too.
 export const IMPORTANT_HINTS = [
-  'boiler', 'heater', 'heating', 'furnace', 'immersion',
+  'boiler', 'heater', 'heating', 'furnace', 'immersion', 'hot_water', 'water_heater', 'geyser',
   'freezer', 'fridge', 'refrigerator',
   'pump', 'sump', 'well',
   'oven', 'hob', 'stove', 'kettle',
-  'server', 'nas', 'router', 'modem', 'network', 'firewall',
-  'alarm', 'siren', 'smoke', 'security', 'door', 'gate', 'garage',
+  'dishwasher', 'washer', 'washing', 'dryer', 'child_lock',
+  'server', 'router', 'modem', 'network', 'firewall', 'switchport',
+  'esxi', 'proxmox', 'hypervisor', 'virtual', 'rack',
+  'battery', 'inverter', 'solar', 'grid',
+  'alarm', 'siren', 'smoke', 'security', 'door', 'gate', 'garage', 'lock',
   'medical', 'oxygen', 'cpap',
   'charger', 'ev_', 'car',
   'irrigation', 'sprinkler',
 ];
+// Too short to match as a word start ("ups" in "upstairs"): whole words only.
+export const IMPORTANT_WORDS = ['nas', 'vm', 'host', 'ups', 'pdu', 'poe', 'ems', 'nvr'];
+// Integrations whose switches run machines, not lamps.
+export const IMPORTANT_PLATFORMS = [
+  'esxi_stats', 'vmware', 'proxmoxve', 'unraid', 'truenas', 'synology_dsm', 'qnap', 'qnap_qsw',
+  'apc_pdu', 'apcupsd', 'nut', 'snmp', 'netgear', 'fritz', 'unifi', 'tplink_omada', 'omada',
+  'opnsense', 'pfsense', 'mikrotik', 'openwrt', 'wake_on_lan', 'shell_command', 'command_line',
+  'home_connect', 'miele', 'electrolux', 'candy', 'smartthinq_sensors', 'lg_thinq',
+  'victron', 'solaredge', 'sma', 'huawei_solar', 'growatt_server', 'goodwe', 'fronius',
+  'enphase_envoy', 'solax', 'foxess', 'tesla_fleet', 'teslemetry', 'tessie', 'powerwall',
+  'wallbox', 'easee', 'zaptec', 'ocpp', 'myenergi', 'ohme', 'evcc',
+];
+// Rooms where a switch is infrastructure.
+export const IMPORTANT_ROOMS = ['comms', 'server', 'network', 'rack', 'plant', 'boiler'];
 const IMPORTANT_DOMAINS = ['switch'];
 
-export function looksImportant(entityId, name = '') {
+const words = (text) => ` ${String(text || '').toLowerCase().replace(/[^a-z0-9_]+/g, ' ')} `;
+const startsWord = (text, h) => new RegExp(`[ ._]${h.replace('_', '[ _]?')}`).test(text);
+const wholeWord = (text, w) => new RegExp(`[ ._]${w}[0-9]*(?=[ ._])`).test(text);
+
+// context: { platform, area } from the entity registry, when known.
+export function looksImportant(entityId, name = '', context = {}) {
   if (!IMPORTANT_DOMAINS.includes(entityId.split('.')[0])) return false;
-  const words = `${entityId} ${name}`.toLowerCase().replace(/[^a-z0-9_]+/g, ' ');
-  return IMPORTANT_HINTS.some((h) => new RegExp(`(^|[ ._])${h.replace('_', '_?')}`).test(words));
+  if (context.platform && IMPORTANT_PLATFORMS.includes(context.platform)) return true;
+  if (context.area && IMPORTANT_ROOMS.some((r) => startsWord(words(context.area), r))) return true;
+  const text = words(`${entityId} ${name}`);
+  return IMPORTANT_HINTS.some((h) => startsWord(text, h)) || IMPORTANT_WORDS.some((w) => wholeWord(text, w));
+}
+
+// Which integration an entity comes from and which room it is in.
+export function entityContext(hass, entityId) {
+  const entry = hass && hass.entities && hass.entities[entityId];
+  if (!entry) return {};
+  const device = entry.device_id && hass.devices ? hass.devices[entry.device_id] : null;
+  const areaId = entry.area_id || (device && device.area_id);
+  const area = areaId && hass.areas && hass.areas[areaId];
+  return { platform: entry.platform, area: area ? `${area.area_id} ${area.name || ''}` : areaId || '' };
 }
 
 export function makeAllow(patterns = DEFAULT_ALLOW) {
@@ -56,13 +92,13 @@ export function makeAllow(patterns = DEFAULT_ALLOW) {
     warnings,
     // 'yes', 'no', or 'important' (matched only by a pattern, and it looks
     // like something that matters).
-    verdict(entityId, name = '') {
+    verdict(entityId, name = '', context = {}) {
       if (exact.has(entityId)) return 'yes';
       if (!usable.some((p) => matches(p, entityId))) return 'no';
-      return looksImportant(entityId, name) ? 'important' : 'yes';
+      return looksImportant(entityId, name, context) ? 'important' : 'yes';
     },
-    allows(entityId, name = '') {
-      return this.verdict(entityId, name) === 'yes';
+    allows(entityId, name = '', context = {}) {
+      return this.verdict(entityId, name, context) === 'yes';
     },
   };
 }
@@ -95,7 +131,7 @@ export class HouseActions {
   }
 
   allowed(entityId) {
-    return this.mode === 'practice' || this.allow.allows(entityId, this._name(entityId));
+    return this.mode === 'practice' || this.allow.allows(entityId, this._name(entityId), this._context(entityId));
   }
 
   _name(entityId) {
@@ -103,11 +139,15 @@ export class HouseActions {
     return (st && st.attributes && st.attributes.friendly_name) || '';
   }
 
+  _context(entityId) {
+    return entityContext(this.getHass(), entityId);
+  }
+
   // Returns { ok, reason } straight away; the house catches up later.
   // domain defaults to the entity's own (fly_house.loom targets a sensor).
   call(entityId, service, data = {}, domain = domainOf(entityId), allowedAnyway = false) {
     if (!allowedAnyway && !this.allowed(entityId)) {
-      const important = this.allow.verdict(entityId, this._name(entityId)) === 'important';
+      const important = this.allow.verdict(entityId, this._name(entityId), this._context(entityId)) === 'important';
       return { ok: false, reason: 'not-allowed', important };
     }
     const now = Date.now();

@@ -87,6 +87,48 @@ test('switches that look important need naming, not a pattern', async () => {
   assert.ok(looksImportant('switch.car_charger'));
 });
 
+test('a real home: PDUs, hypervisors, batteries and appliances are important', async () => {
+  const { looksImportant } = await import('../card/src/actions.js');
+  // From a real house: everything here was reachable through switch.* before.
+  const important = [
+    ['switch.ap7920_outlet_3', 'AP7920 Outlet 3', { platform: 'apc_pdu' }],
+    ['switch.esxi_vm_devuntu', 'VM: Devuntu ESXi VM Devuntu', {}],
+    ['switch.vm_gamlabio_local_esxi_vm_gamlabio_local', 'VM: GamlaBio.local', { platform: 'esxi_stats' }],
+    ['switch.esxi_host_localhost_lan', 'ESXi Host Localhost.Lan', {}],
+    ['switch.ftw_legacy_site_wide_battery_cover', 'FTW Legacy Site-wide Battery Cover', { platform: 'mqtt' }],
+    ['switch.dishwasher_power', 'Dishwasher Power', {}],
+    ['switch.dishwasher_vario_speed', 'Vario speed', { platform: 'home_connect' }],
+    ['switch.outlet_2', 'Outlet 2', { area: 'comms_room Comms Room' }],
+    ['switch.ups_beeper', 'UPS beeper', {}],
+    ['switch.office_poe', 'Office PoE', {}],
+    ['switch.smart_plug_2_socket_1', 'Hot Water', { platform: 'tuya_local' }],
+    ['switch.smart_plug_3_socket_1', 'Washing machine Socket 1', { platform: 'tuya' }],
+  ];
+  for (const [id, name, ctx] of important) assert.ok(looksImportant(id, name, ctx), id);
+  const fine = [
+    ['switch.smart_plug_3_socket_1', 'Smart Plug 3 Socket 1', { platform: 'tuya', area: 'upstairs_shower Upstairs Shower' }],
+    ['switch.upstairs_lamp', 'Upstairs lamp', {}],
+    ['switch.sky_lite_rotation', 'Sky Lite Rotation', { platform: 'blisslights' }],
+    ['switch.saga_screen', 'Saga Screen', { platform: 'fully_kiosk' }],
+    ['switch.ghost_lights', 'Ghost lights', {}],
+  ];
+  for (const [id, name, ctx] of fine) assert.ok(!looksImportant(id, name, ctx), id);
+});
+
+test('the registry decides too: a pattern never reaches a PDU outlet', async () => {
+  const hass = hassWith({ 'switch.outlet_1': st('on', { friendly_name: 'Outlet 1' }), 'switch.lamp': st('on', { friendly_name: 'Lamp' }) });
+  hass.entities = { 'switch.outlet_1': { platform: 'apc_pdu', device_id: 'd1' }, 'switch.lamp': { platform: 'tuya', device_id: 'd2' } };
+  hass.devices = { d1: { area_id: 'comms_room' }, d2: { area_id: 'kitchen' } };
+  hass.areas = { comms_room: { area_id: 'comms_room', name: 'Comms Room' }, kitchen: { area_id: 'kitchen', name: 'Kitchen' } };
+  const a = new HouseActions({ getHass: () => hass, mode: 'real', allow: makeAllow(['switch.*']) });
+  assert.deepEqual(a.call('switch.outlet_1', 'turn_off'), { ok: false, reason: 'not-allowed', important: true });
+  assert.deepEqual(a.call('switch.lamp', 'turn_off'), { ok: true });
+  const named = new HouseActions({ getHass: () => hass, mode: 'real', allow: makeAllow(['switch.outlet_1']) });
+  assert.deepEqual(named.call('switch.outlet_1', 'turn_off'), { ok: true }, 'named exactly, somebody chose it');
+  a.close();
+  named.close();
+});
+
 test('a refused important switch says why', async () => {
   const hass = hassWith({ 'switch.freezer': st('on', { friendly_name: 'Freezer' }) });
   const a = new HouseActions({ getHass: () => hass, mode: 'real', allow: makeAllow(['switch.*']) });

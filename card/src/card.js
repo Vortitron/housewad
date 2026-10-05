@@ -22,7 +22,7 @@ import { generateMap } from './mapgen.js';
 import { generateFromPlan } from './planmap.js';
 import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
-import { HouseActions, makeAllow, DEFAULT_ALLOW } from './actions.js';
+import { HouseActions, makeAllow, DEFAULT_ALLOW, entityContext } from './actions.js';
 import { HouseLink, hudText } from './house.js';
 
 const VERSION = '0.1.0';
@@ -145,10 +145,26 @@ class HouseWadCard extends HTMLElement {
     this._stop();
     const hass = this._hass;
     let summary = 'Waiting for Home Assistant...';
+    let reach = '';
     if (hass) {
       const house = buildHouse(hass, { exclude: this.config.exclude || [] });
       const count = (k) => house.rooms.reduce((n, r) => n + r[k].length, 0);
       summary = `${house.rooms.length} rooms, ${count('lights')} lights, ${count('switches')} switches, ${count('doors')} doors`;
+      if (this.allow) {
+        // What "Play for real" could actually touch, so nobody finds out by shooting it.
+        let yes = 0;
+        let guarded = 0;
+        const ids = new Set();
+        for (const r of house.rooms) for (const k of ['lights', 'switches', 'media', 'vacuums', 'doors']) for (const e of r[k] || []) ids.add(e.entity_id || e.lock || e.cover || e);
+        for (const id of ids) {
+          if (typeof id !== 'string') continue;
+          const st = hass.states[id];
+          const v = this.allow.verdict(id, (st && st.attributes.friendly_name) || '', entityContext(hass, id));
+          if (v === 'yes') yes++;
+          else if (v === 'important') guarded++;
+        }
+        reach = ` (${yes} things${guarded ? `; ${guarded} ${guarded === 1 ? 'switch that looks' : 'switches that look'} important ${guarded === 1 ? 'is' : 'are'} left alone` : ''})`;
+      }
     }
     const allowText = this.allow ? this.allow.patterns.join(', ') : '';
     const warnings = this.allow && this.allow.warnings.length ? `<div class="small warn">${this.allow.warnings.map(esc).join('<br>')}</div>` : '';
@@ -164,7 +180,7 @@ class HouseWadCard extends HTMLElement {
               <button class="practice">Practice</button>
               <button class="real">Play for real</button>
             </div>
-            <div class="small">Practice: nothing in the house moves.<br>For real: shooting and using things controls <b>${esc(allowText)}</b>.</div>
+            <div class="small">Practice: nothing in the house moves.<br>For real: shooting and using things controls <b>${esc(allowText)}</b>${esc(reach)}.</div>
             ${warnings}
             <div class="small hint">${matchMedia('(pointer: coarse)').matches ? 'Arrows to move, FIRE and USE buttons. Full screen and turn the phone sideways for a bigger view.' : 'WASD or arrows, mouse to turn, click or Ctrl to fire, E or Space to use'}</div>
           </div>
