@@ -124,3 +124,10 @@ test('rooms on an unknown floor go to the ground floor', () => {
   const { manifest } = generateMap({ floors: [{ id: 'g', name: 'G', level: 0 }], rooms: [room('x', 'X', 'nope')] });
   assert.equal(manifest.rooms[0].floorZ, 0);
 });
+
+test('a garden is outdoors, not a den', async () => {
+  const { themeFor } = await import('../card/src/mapgen.js');
+  assert.ok(themeFor('Garden').outdoor);
+  assert.ok(!themeFor('Garden').wall.startsWith('WOOD'));
+  assert.equal(themeFor('TV room').wall, 'WOOD3');
+});

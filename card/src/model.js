@@ -9,7 +9,7 @@ export const UNASSIGNED = '_unassigned';
 const DOOR_SENSOR_CLASSES = ['door', 'garage_door'];
 const DOOR_COVER_CLASSES = ['door', 'garage', 'gate'];
 const PRESENCE_CLASSES = ['motion', 'occupancy', 'presence'];
-const NOT_HOUSE_PLATFORMS = ['hassio'];
+const NOT_HOUSE_PLATFORMS = ['hassio', 'hacs'];
 
 export function domainOf(entityId) {
   return entityId.split('.')[0];

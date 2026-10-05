@@ -59,7 +59,7 @@ async function run(mode, query = '') {
   await t.page.evaluate(() => window.hass.set('binary_sensor.kitchen_motion', 'on'));
   await t.page.waitForTimeout(1200);
   m = await t.mon();
-  assert.ok(m['imp:binary_sensor.kitchen_motion'] && m['imp:binary_sensor.kitchen_motion'].state === 1, 'imp for motion');
+  assert.ok(m['imp:kitchen'] && m['imp:kitchen'].state === 1, 'imp for motion');
   assert.ok(!m['soul:light.kitchen_ceiling'], 'no wasted-light soul while someone is there');
   // Closing the window removes the cacodemon.
   await t.page.evaluate(() => window.hass.set('binary_sensor.bedroom_window', 'off'));

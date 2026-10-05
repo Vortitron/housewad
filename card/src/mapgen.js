@@ -43,7 +43,7 @@ const THEMES = [
   { re: /kitchen|kök|kok/i, wall: 'COMPTILE', floor: 'FLOOR1_1', ceil: 'CEIL1_1' },
   { re: /bath|toilet|wc|shower|badrum|toalett|dusch|tvätt|laundry|utility/i, wall: 'MARBGRAY', floor: 'FLAT1_3', ceil: 'CEIL3_1' },
   { re: /bed|sov|nursery|guest|gäst|barn|kid/i, wall: 'WOOD1', floor: 'FLAT14', ceil: 'CEIL1_3' },
-  { re: /living|lounge|vardag|family|sitting|tv|den|sällskap/i, wall: 'WOOD3', floor: 'FLAT5_1', ceil: 'CEIL3_5' },
+  { re: /living|lounge|vardag|family|sitting|\btv\b|\bden\b|sällskap/i, wall: 'WOOD3', floor: 'FLAT5_1', ceil: 'CEIL3_5' },
   { re: /office|study|kontor|work|arbet|server|network|data/i, wall: 'COMPBLUE', floor: 'FLOOR7_1', ceil: 'CEIL5_1' },
   { re: /garage|workshop|verkstad|shed|förråd|storage|cellar|källare|basement|boiler|pann/i, wall: 'CEMENT1', floor: 'FLOOR4_8', ceil: 'CEIL5_2' },
   { re: /hall|entr|porch|hall|farstu|stair|trapp|landing|corridor/i, wall: 'BROWN1', floor: 'FLAT5_4', ceil: 'CEIL3_5' },

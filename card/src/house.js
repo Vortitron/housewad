@@ -541,11 +541,10 @@ export class HouseLink {
         });
       }
 
-      // Somebody is in the room.
-      for (const p of room.presence) {
-        if (imps >= MAX_IMPS || !isOn(a.state(p.entity_id))) continue;
+      // Somebody is in the room: one imp, however many sensors agree.
+      if (occupied && imps < MAX_IMPS) {
         imps++;
-        want.set(`imp:${p.entity_id}`, {
+        want.set(`imp:${room.id}`, {
           type: 'imp',
           room: room.id,
           label: `Movement in the ${room.name}`,
