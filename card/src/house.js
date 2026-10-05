@@ -253,17 +253,20 @@ export class HouseLink {
     if (!this.ready) return false;
     const p = this.player();
     if (!p || !p.alive) return false;
-    if (this._feedNearFly(p)) return true;
     let best = null;
+    const facing = (x, y, reach) => {
+      const dist = Math.hypot(x - p.x, y - p.y);
+      if (dist > reach) return null;
+      const diff = Math.abs((((Math.atan2(y - p.y, x - p.x) * 180) / Math.PI - p.angle + 540) % 360) - 180);
+      return diff > 35 ? null : dist;
+    };
+    // A fly in front of you, nearer than any lamp, gets fed instead.
+    const fly = this._flyInFront(facing);
     for (const [slot, lamp] of this.lampSlot) {
-      const dx = lamp.x - p.x;
-      const dy = lamp.y - p.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > 128) continue;
-      let diff = Math.abs(((Math.atan2(dy, dx) * 180) / Math.PI - p.angle + 540) % 360 - 180);
-      if (diff > 35) continue;
-      if (!best || dist < best.dist) best = { slot, lamp, dist };
+      const dist = facing(lamp.x, lamp.y, 128);
+      if (dist !== null && (!best || dist < best.dist)) best = { slot, lamp, dist };
     }
+    if (fly && (!best || fly.dist < best.dist)) return this._feed(fly.mon);
     if (!best) return false;
     const st = this.actions.state(best.lamp.entity);
     const service = isOn(st) ? 'turn_off' : 'turn_on';
@@ -298,18 +301,23 @@ export class HouseLink {
     if (r.ok) this.message(`${fly.name}: loomed. Escape neurons firing.`);
   }
 
-  _feedNearFly(p) {
+  _flyInFront(facing) {
+    let best = null;
     for (const mon of this.monsters.values()) {
       if (!mon.spec.fly || this.m._hw_slot_state(mon.slot) !== 1) continue;
       if (!this.m._hw_slot_pos(mon.slot, this.out)) continue;
       const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
-      if (Math.hypot(v[0] - p.x, v[1] - p.y) > 120) continue;
-      const fly = mon.spec.fly;
-      const r = this.actions.call(fly.mode, 'feed', { amount: 1 }, 'fly_house', true);
-      if (r.ok) this.message(`${fly.name}: fed. Dopamine.`);
-      return true;
+      const dist = facing(v[0], v[1], 160);
+      if (dist !== null && (!best || dist < best.dist)) best = { mon, dist };
     }
-    return false;
+    return best;
+  }
+
+  _feed(mon) {
+    const fly = mon.spec.fly;
+    const r = this.actions.call(fly.mode, 'feed', { amount: 1 }, 'fly_house', true);
+    if (r.ok) this.message(`${fly.name}: fed. Dopamine.`);
+    return true;
   }
 
   // Walk each fly monster the way its brain is heading. Escaping flies bolt

@@ -86,6 +86,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
         presence: [],
         windows: [],
         climates: [],
+        cameras: [],
         doors: [],
       });
     }
