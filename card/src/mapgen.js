@@ -37,6 +37,7 @@ const YARD = 256;
 const STOREY = 128; // floor-to-floor height
 const STEP = 32; // stair tread depth
 const SLOT = 96; // wall fixture spacing
+const MAX_LAMPS = 32; // per room
 
 // Room themes by name. First match wins; English and Swedish names.
 const THEMES = [
@@ -371,9 +372,17 @@ function placeLamps(manifest, room, info, free) {
   const cxm = (x1 + x2) / 2;
   const cym = (y1 + y2) / 2;
   candidates.sort((a, b) => Math.atan2(a[1] - cym, a[0] - cxm) - Math.atan2(b[1] - cym, b[0] - cxm));
-  const step = Math.max(1, Math.floor(candidates.length / room.lights.length));
-  room.lights.forEach((light, i) => {
-    const p = candidates[(i * step) % Math.max(1, candidates.length)] || [cxm, cym];
+  // More lights than wall spots (a big "Somewhere" room): the rest stand on
+  // open floor, and past MAX_LAMPS a light keeps its say in the room's
+  // brightness without a lamp of its own. Never two lamps on one spot.
+  const lights = room.lights.slice(0, MAX_LAMPS);
+  const step = Math.max(1, Math.floor(candidates.length / lights.length));
+  const used = new Set();
+  lights.forEach((light, i) => {
+    let p = candidates[(i * step) % Math.max(1, candidates.length)];
+    if (!p || used.has(p.join(','))) p = candidates.find((q) => !used.has(q.join(','))) || free.find((q) => !used.has(q.join(',')));
+    if (!p) return;
+    used.add(p.join(','));
     const idx = free.findIndex((q) => q[0] === p[0] && q[1] === p[1]);
     if (idx >= 0) free.splice(idx, 1);
     manifest.lamps.push({ entity: light.entity_id, room: room.id, x: p[0], y: p[1] });

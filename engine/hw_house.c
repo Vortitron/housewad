@@ -405,6 +405,9 @@ int hw_type(const char *name)
         {"blueskull", MT_MISC9},
         {"yellowskull", MT_MISC7},
         {"backpack", MT_MISC24},
+        {"baron", MT_BRUISER},
+        {"rocketlauncher", MT_MISC27},
+        {"rockets", MT_MISC19},
     };
     unsigned i;
 

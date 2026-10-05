@@ -132,3 +132,11 @@ test('a garden is outdoors, not a den', async () => {
   assert.ok(!themeFor('Garden').wall.startsWith('WOOD'));
   assert.equal(themeFor('TV room').wall, 'WOOD3');
 });
+
+test('a room with a hundred lights gets lamps on separate spots', () => {
+  const lights = Array.from({ length: 100 }, (_, i) => ({ entity_id: `light.l${i}` }));
+  const { manifest } = generateMap({ floors: [], rooms: [room('x', 'Somewhere', null, { lights })] });
+  const spots = manifest.lamps.map((l) => `${l.x},${l.y}`);
+  assert.equal(spots.length, 32);
+  assert.equal(new Set(spots).size, spots.length, 'no two lamps share a spot');
+});

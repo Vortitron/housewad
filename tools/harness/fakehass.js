@@ -62,6 +62,20 @@ export function makeFakeHass(onUpdate) {
   add('sensor.test_fly_heading', '90', { friendly_name: 'Test Fly Heading' }, null);
   add('sensor.test_fly_kenyon_cells_active', '30', { friendly_name: 'Test Fly Kenyon cells active' }, null);
   entities['sensor.car_keys_area'].platform = 'bermuda';
+  // Watched VomeSync switches: the outside world, read only.
+  const watch = (id, name, on) => {
+    add(`switch.${id}`, on ? 'on' : 'off', { friendly_name: name, switch_uid: `vs_${id}`, is_owner: false }, null);
+    entities[`switch.${id}`].platform = 'vomesync';
+  };
+  watch('github_is_up', 'GitHub is up', true);
+  watch('tower_bridge_open', 'Tower Bridge open', false);
+  watch('significant_earthquake', 'Significant earthquake', false);
+  watch('orbital_launch_window', 'Orbital launch window', false);
+  // How the integration really shows a watched switch: a sensor.
+  add('sensor.cloudflare_is_up_status', 'on', { friendly_name: 'Cloudflare is up Status', name: 'Cloudflare is up', category: 'IsUp', switch_uid: 'vs_cf', is_owner: false }, null);
+  entities['sensor.cloudflare_is_up_status'].platform = 'vomesync';
+  add('switch.my_shared_switch', 'off', { friendly_name: 'My shared switch', switch_uid: 'vs_mine', is_owner: true }, 'kitchen');
+  entities['switch.my_shared_switch'].platform = 'vomesync';
   for (const id of ['sensor.test_fly_mode', 'sensor.test_fly_heading', 'sensor.test_fly_kenyon_cells_active']) entities[id].platform = 'fly_house';
   add('switch.config_thing', 'on', { friendly_name: 'Hidden config switch' }, 'kitchen');
   entities['switch.config_thing'].entity_category = 'config';

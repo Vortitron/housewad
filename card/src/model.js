@@ -93,6 +93,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     return rooms.get(UNASSIGNED);
   };
 
+  const world = [];
   const powerByDevice = new Map();
   const locks = [];
   const doorCovers = [];
@@ -104,6 +105,16 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     const domain = domainOf(entityId);
     const dc = st.attributes.device_class;
     const item = { entity_id: entityId, name: st.attributes.friendly_name || entityId };
+    // VomeSync shared switches are signals between homes, not devices in this
+    // one. The ones this home only watches (a sensor, or a switch it does not
+    // own) are the outside world; the ones it owns stay out of the game.
+    if (isVomeSync(entities[entityId], st)) {
+      if (!st.attributes.is_owner) {
+        const name = st.attributes.name || item.name.replace(/ Status$/, '');
+        world.push({ entity_id: entityId, name, kind: worldKind(name, st.attributes.category) });
+      }
+      continue;
+    }
     switch (domain) {
       case 'light':
         roomFor(entityId).lights.push(item);
@@ -216,6 +227,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     rooms: houseRooms,
     flies: findFlies(hass, exclude),
     trackers: findTrackers(hass, exclude),
+    world,
   };
 }
 
@@ -259,4 +271,20 @@ export function findTrackers(hass, exclude = []) {
     out.push({ entity_id: entityId, name });
   }
   return out;
+}
+
+function isVomeSync(reg, st) {
+  return (reg && reg.platform === 'vomesync') || (!!st.attributes.switch_uid && 'is_owner' in st.attributes);
+}
+
+// What a world signal is, from its name. The public catalogue on
+// sync.vome.io names things plainly ("GitHub is up", "Tower Bridge open").
+export function worldKind(name, category = '') {
+  const n = String(name || '').toLowerCase();
+  if (category === 'IsUp' || / is up$/.test(n)) return 'uptime';
+  if (/geomagnetic|aurora/.test(n)) return 'aurora';
+  if (/earthquake|volcano|hurricane|flood|gdacs|tsunami|eruption/.test(n)) return 'disaster';
+  if (/launch/.test(n)) return 'launch';
+  if (/bridge|brug|underground|disruption|tunnel/.test(n)) return 'transport';
+  return 'event';
 }

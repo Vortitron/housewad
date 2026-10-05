@@ -4,6 +4,14 @@
 
 house.wad is a Home Assistant dashboard card. It reads your floors, areas and devices, builds a Doom level out of them, and runs the real Doom engine in the card. What you do in the game happens in the house, and what happens in the house shows up in the game.
 
+## Try it
+
+**[housefly.vome.io/housewad](https://housefly.vome.io/housewad)** signs you straight into a demo house and its house.wad dashboard: the game on the left, the devices it is changing on the right. Press **Play for real**. Everything in it is simulated, and everyone who visits shares the same house, so the lamp you shoot is off for them too.
+
+**[housefly.vome.io/swarm](https://housefly.vome.io/swarm)** is a second house with four fruit-fly brains living in it; open **house.wad** from the sidebar.
+
+Both run on [Vome](https://vome.io) hosting. The guest sign-ins are renewed monthly; if one has lapsed, open an issue.
+
 | In the game | In your house |
 |---|---|
 | Shoot a lamp | The light turns off |
@@ -33,6 +41,21 @@ Under the game, a status line shows the room you're in, what you're aiming at (a
 | Cacodemon | A window open while the heating runs | Nothing. Go and close the window yourself |
 
 If killing a monster doesn't fix the problem (the light didn't turn off, say), the monster comes back.
+
+### The outside world
+
+If the home watches public switches from [sync.vome.io](https://sync.vome.io) (the [Vome](https://github.com/Vortitron/VomeSync) integration's shared switches, which follow real things: bridges opening, services going down, earthquakes, rocket launches), the level hears about them:
+
+| Out there | In the game |
+|---|---|
+| A service goes down ("GitHub is up" turns off) | A Baron of Hell called "GitHub is down" turns up. Killing it won't bring GitHub back; it leaves when GitHub does |
+| A significant earthquake, volcano, hurricane or flood alert | Every room's lights shake |
+| A geomagnetic storm | An aurora over the yards and the garden |
+| An orbital launch window | A rocket launcher by the start, while the window is open |
+| A bridge opens, or the Underground is disrupted | The corridor lights flicker |
+| Anything else | A line on the HUD and the status line |
+
+Watched switches are read only. Switches the home owns are left out of the game entirely.
 
 ### Fly brains
 

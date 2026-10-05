@@ -83,3 +83,21 @@ test('template devices pair by name: plug power, vacuum room, tag area', () => {
   assert.equal(kitchen.vacuums.find((v) => v.entity_id === 'vacuum.robo2').roomSensor, 'sensor.robo2_current_room');
   assert.deepEqual(house.trackers.map((t) => t.entity_id).sort(), ['sensor.car_keys_area', 'sensor.wallet_area']);
 });
+
+test('watched VomeSync switches are the outside world; owned ones are left out', async () => {
+  const { worldKind } = await import('../card/src/model.js');
+  const house = buildHouse(makeFakeHass());
+  const switches = house.rooms.flatMap((r) => r.switches.map((s) => s.entity_id));
+  assert.ok(!switches.some((s) => s.startsWith('switch.github') || s === 'switch.my_shared_switch'));
+  assert.deepEqual(house.world.map((w) => [w.entity_id, w.kind]).sort(), [
+    ['sensor.cloudflare_is_up_status', 'uptime'],
+    ['switch.github_is_up', 'uptime'],
+    ['switch.orbital_launch_window', 'launch'],
+    ['switch.significant_earthquake', 'disaster'],
+    ['switch.tower_bridge_open', 'transport'],
+  ]);
+  assert.equal(worldKind('Geomagnetic storm G4+'), 'aurora');
+  assert.equal(worldKind('Ketelbrug open'), 'transport');
+  assert.equal(worldKind('Full moon'), 'event');
+  assert.equal(house.world.find((w) => w.entity_id === 'sensor.cloudflare_is_up_status').name, 'Cloudflare is up');
+});

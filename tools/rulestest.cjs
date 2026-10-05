@@ -85,6 +85,29 @@ async function run(mode, query = '') {
   await t.page.waitForTimeout(1500);
   const vacRoom = await t.page.evaluate(() => window.card.link.monsters.get('vac:vacuum.roborock')?.spec.room);
   assert.strictEqual(vacRoom, 'kitchen', 'vacuum demon follows the room sensor');
+  // The outside world: GitHub goes down, a baron turns up; back up, it goes.
+  await t.page.evaluate(() => window.hass.set('switch.github_is_up', 'off'));
+  await t.page.waitForTimeout(1300);
+  m = await t.mon();
+  assert.ok(m['down:switch.github_is_up'] && m['down:switch.github_is_up'].state === 1, 'baron for the outage');
+  assert.match(await t.page.evaluate(() => window.card.link.last.text), /GitHub is down/);
+  await t.page.evaluate(() => window.hass.set('switch.github_is_up', 'on'));
+  await t.page.waitForTimeout(1300);
+  m = await t.mon();
+  assert.ok(!m['down:switch.github_is_up'], 'baron gone when GitHub is back');
+  // An earthquake shakes the lights; a launch window drops a rocket launcher.
+  await t.page.evaluate(() => { window.hass.set('switch.significant_earthquake', 'on'); window.hass.set('switch.orbital_launch_window', 'on'); });
+  await t.page.waitForTimeout(1300);
+  assert.ok(await t.page.evaluate(() => Date.now() < window.card.link.effects.quakeUntil), 'quaking');
+  assert.ok(await t.page.evaluate(() => window.card.link.items.get('world:launcher')?.present), 'rocket launcher by the start');
+  await t.page.evaluate(() => window.hass.set('switch.orbital_launch_window', 'off'));
+  await t.page.waitForTimeout(1300);
+  assert.ok(!(await t.page.evaluate(() => window.card.link.items.has('world:launcher'))), 'launcher gone with the window');
+  // The bridge opening flickers the corridor.
+  await t.page.evaluate(() => window.hass.set('switch.tower_bridge_open', 'on'));
+  await t.page.waitForTimeout(1500);
+  assert.ok(await t.page.evaluate(() => window.card.link.effects.flickering), 'corridor flickers');
+  console.log('world events ok');
   assert.deepStrictEqual(t.errors, []);
   await t.page.screenshot({ path: SP + '/rules-real.png' });
   await t.browser.close();

@@ -58,6 +58,12 @@ export class HouseLink {
     this.exitScene = exitScene;
     this.tally = new Map();
     this.last = null;
+    this.worldPrev = new Map(); // world signal -> last state seen
+    this.effects = { quakeUntil: 0 };
+    this.corridorSectors = Object.entries(manifest.sectorRoom)
+      .filter(([, r]) => r.id.startsWith('_corridor'))
+      .map(([s]) => Number(s));
+    this.outdoorSectors = manifest.rooms.flatMap((r) => (r.outdoor ? r.sectors : r.yard !== undefined ? [r.yard] : []));
     this.items = new Map(); // key -> { slot, room, present, pickedAt, tracker }
     this.itemSlot = new Map(); // slot -> key
     this.onConfirm = onConfirm || (() => {});
@@ -70,7 +76,7 @@ export class HouseLink {
     this.nextSlot = MONSTER_SLOT_BASE;
     this.currentRoom = null;
     this.type = {};
-    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron', 'redcard', 'bluecard', 'yellowcard', 'redskull', 'blueskull', 'yellowskull', 'backpack'])
+    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron', 'redcard', 'bluecard', 'yellowcard', 'redskull', 'blueskull', 'yellowskull', 'backpack', 'baron', 'rocketlauncher', 'rockets'])
       this.type[name] = this.m.ccall('hw_type', 'number', ['string'], [name]);
 
     this.roomInfo = new Map(manifest.rooms.map((r) => [r.id, r]));
@@ -240,6 +246,7 @@ export class HouseLink {
   _levelReady() {
     this.ready = true;
     this.tally = new Map();
+    this.worldPrev.clear();
     this.items.clear();
     this.itemSlot.clear();
     this.monsters.clear();
@@ -524,6 +531,23 @@ export class HouseLink {
       room.climates.some((c) => a.state(c.entity_id)?.attributes?.hvac_action === 'heating'),
     );
 
+    // A service in the outside world is down: a Baron of Hell stands in the
+    // biggest room, named after it, until the service comes back.
+    const big = [...this.manifest.rooms].filter((r) => !r.outdoor).sort((x, y) => y.spawns.length - x.spawns.length)[0];
+    for (const w of this.house.world || []) {
+      if (w.kind !== 'uptime' || !big) continue;
+      const st = a.state(w.entity_id);
+      if (!st || st.state !== 'off') continue;
+      const service = w.name.replace(/ is up$/i, '');
+      want.set(`down:${w.entity_id}`, {
+        type: 'baron',
+        room: big.id,
+        label: `${service} is down`,
+        respawn: 30000,
+        onKill: () => this.message(`Killing it won't bring ${service} back.`),
+      });
+    }
+
     // Fruit-fly brains, each walking an arachnotron (a brain on legs).
     if (this.fliesOn) {
       // One fly to a room while there are rooms to go round; arachnotrons
@@ -688,6 +712,7 @@ export class HouseLink {
 
   sync({ instant = false } = {}) {
     if (!this.ready) return;
+    const shaking = Date.now() < this.effects.quakeUntil;
     const a = this.actions;
     const hass = this._hass();
 
@@ -709,8 +734,8 @@ export class HouseLink {
         const day = !sun || sun.state === 'above_horizon';
         level = Math.max(level ?? 0, day ? 208 : 72);
       }
-      for (const s of info.sectors) this.m._hw_sector_light(s, level);
-      if (info.yard !== undefined) {
+      if (!shaking && !(this.effects.aurora && info.outdoor)) for (const s of info.sectors) this.m._hw_sector_light(s, level);
+      if (info.yard !== undefined && !this.effects.aurora) {
         const sun = hass && hass.states['sun.sun'];
         this.m._hw_sector_light(info.yard, !sun || sun.state === 'above_horizon' ? 208 : 72);
       }
@@ -786,6 +811,7 @@ export class HouseLink {
     }
     this._steerFlies();
     this._syncItems();
+    this._syncWorld();
   }
 
   // The exit: Doom shows its tally screen (kills = house problems fixed);
@@ -835,6 +861,80 @@ export class HouseLink {
       return true;
     }
     return false;
+  }
+
+  // The outside world -----------------------------------------------------------
+  //
+  // VomeSync switches this home watches (sync.vome.io's public catalogue:
+  // bridges opening, services going down, earthquakes, launches) are read
+  // only. When one changes, the level hears about it.
+  _syncWorld() {
+    const now = Date.now();
+    let launch = false;
+    for (const w of this.house.world || []) {
+      const st = this.actions.state(w.entity_id);
+      if (!st || !['on', 'off'].includes(st.state)) continue;
+      const on = st.state === 'on';
+      if (w.kind === 'launch' && on) launch = true;
+      const prev = this.worldPrev.get(w.entity_id);
+      this.worldPrev.set(w.entity_id, st.state);
+      if (prev === undefined || prev === st.state) continue;
+      if (w.kind === 'uptime') {
+        const service = w.name.replace(/ is up$/i, '');
+        this.message(on ? `The world: ${service} is back up.` : `The world: ${service} is down.`);
+      } else {
+        this.message(on ? `The world: ${w.name}.` : `The world: ${w.name} - over.`);
+      }
+      if (on && w.kind === 'disaster') {
+        this.effects.quakeUntil = now + 6000;
+        this.sound('barexp');
+      }
+    }
+    // A launch window somewhere: a rocket launcher by the start, while it lasts.
+    const start = this.manifest.start;
+    const keys = ['world:launcher', 'world:rockets'];
+    keys.forEach((key, i) => {
+      const it = this.items.get(key);
+      if (launch && !it && start) {
+        const slot = this.nextSlot++;
+        if (this.m._hw_spawn(slot, this.type[i ? 'rockets' : 'rocketlauncher'], start.x + 96 + i * 40, i ? -40 : 40, 0, 0)) {
+          this.items.set(key, { slot, room: null, present: true, pickedAt: 0, tracker: { name: i ? 'rockets' : 'a rocket launcher' } });
+          this.itemSlot.set(slot, key);
+          if (!i) this.message('A rocket is launching somewhere. Have one.');
+        }
+      } else if (!launch && it && it.present) {
+        it.removing = true;
+        this.m._hw_remove(it.slot, 0);
+        this.items.delete(key);
+      }
+    });
+  }
+
+  // Light effects, a few times a second: a quake shakes every room's lights,
+  // an aurora pulses over the yards, a bridge or line problem flickers the
+  // corridor. Sync puts the lights back when they stop.
+  _worldEffects() {
+    const now = Date.now();
+    const world = this.house.world || [];
+    const active = (kind) => world.some((w) => w.kind === kind && this.actions.state(w.entity_id)?.state === 'on');
+    if (now < this.effects.quakeUntil) {
+      for (const r of this.manifest.rooms) for (const s of r.sectors) this.m._hw_sector_light(s, 48 + Math.floor(Math.random() * 200));
+      this.effects.shaking = true;
+    } else if (this.effects.shaking) {
+      this.effects.shaking = false;
+      this.sync();
+    }
+    this.effects.aurora = active('aurora');
+    if (this.effects.aurora) {
+      const level = 150 + Math.round(90 * Math.sin(now / 700));
+      for (const s of this.outdoorSectors) this.m._hw_sector_light(s, level);
+    }
+    const flicker = active('transport');
+    if (flicker || this.effects.flickering) {
+      const level = flicker ? (Math.random() < 0.35 ? 72 : 176) : 176;
+      for (const s of this.corridorSectors) this.m._hw_sector_light(s, level);
+      this.effects.flickering = flicker;
+    }
   }
 
   // Room names as Home Assistant states give them ("Kitchen", "kitchen").
@@ -922,9 +1022,10 @@ export class HouseLink {
     return { room: room ? room.name : '', target: this.aimed(), last: this.last };
   }
 
-  // Called a few times a second: room announcements.
+  // Called a few times a second: room announcements, world effects.
   tick() {
     if (!this.ready) return;
+    this._worldEffects();
     const p = this.player();
     if (!p) return;
     const room = this.manifest.sectorRoom[p.sector];
