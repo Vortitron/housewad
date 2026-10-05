@@ -474,7 +474,7 @@ export class HouseLink {
     if (r.ok) return this.message(`${door.name}: ${doing}...`);
     if (r.reason === 'not-allowed') {
       this.sound('noway');
-      return this.message(door.lock ? `${door.name} is locked. You need the real key.` : `${door.name} is not on the allowlist`);
+      return this.message(door.lock ? `${door.name} is locked. Tick it in the card's settings to open it.` : `${door.name} is not allowed: tick it in the card's settings`);
     }
     return undefined;
   }
@@ -658,8 +658,8 @@ export class HouseLink {
   }
 
   _refused(entityId, r) {
-    if (r.important) this.message(`${friendlyName(this._hass(), entityId)} looks important. Allow it by name.`);
-    else this.message(`${entityId} is not on the allowlist`);
+    if (r.important) this.message(`${friendlyName(this._hass(), entityId)} looks important: tick it in the card's settings if you mean it`);
+    else this.message(`${friendlyName(this._hass(), entityId)} is not allowed: tick it in the card's settings`);
   }
 
   _killAction(entityId, service, done) {

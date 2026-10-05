@@ -24,6 +24,7 @@ import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW, entityContext } from './actions.js';
 import { HouseLink, hudText } from './house.js';
+import './editor.js';
 
 const VERSION = '0.1.0';
 const ASSETS = new URL('./', import.meta.url);
@@ -108,6 +109,11 @@ class HouseWadCard extends HTMLElement {
     this.syncQueued = false;
   }
 
+  // Home Assistant's card editor: what the game may control, as checkboxes.
+  static getConfigElement() {
+    return document.createElement('housewad-card-editor');
+  }
+
   static getStubConfig() {
     return { allow: DEFAULT_ALLOW };
   }
@@ -182,7 +188,7 @@ class HouseWadCard extends HTMLElement {
               <button class="practice">Practice</button>
               <button class="real">Play for real</button>
             </div>
-            <div class="small">Practice: nothing in the house moves.<br>For real: shooting and using things controls <b>${esc(allowText)}</b>${esc(reach)}.</div>
+            <div class="small">Practice: nothing in the house moves.<br>For real: shooting and using things controls <b>${esc(allowText)}</b>${esc(reach)}.<br>To change that, edit this card: pencil at the top right, then the card.</div>
             ${warnings}
             <div class="small hint">${matchMedia('(pointer: coarse)').matches ? 'Arrows to move, FIRE and USE buttons. Full screen and turn the phone sideways for a bigger view.' : 'WASD or arrows, mouse to turn, click or Ctrl to fire, E or Space to use'}</div>
           </div>
