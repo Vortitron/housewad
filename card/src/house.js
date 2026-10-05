@@ -204,7 +204,7 @@ export class HouseLink {
     const fly = mon.spec.fly;
     const strength = Math.round(Math.max(0.2, Math.min(3, 0.4 + damage / 20)) * 10) / 10;
     const r = this.actions.call(fly.mode, 'loom', { strength }, 'fly_house', true);
-    if (r.ok) this.message(`${fly.name}: loomed (${strength}). Escape neurons firing.`);
+    if (r.ok) this.message(`${fly.name}: loomed. Escape neurons firing.`);
   }
 
   _feedNearFly(p) {
@@ -386,20 +386,21 @@ export class HouseLink {
 
     // Fruit-fly brains, each walking an arachnotron (a brain on legs).
     if (this.fliesOn) {
-      const rooms = this.manifest.rooms.filter((r) => r.spawns.length);
-      for (const fly of this.house.flies || []) {
-        if (!rooms.length) break;
-        let h = 0;
-        for (const ch of fly.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      // One fly to a room while there are rooms to go round; arachnotrons
+      // are too big to share a doorway, let alone a spawn point.
+      const rooms = this.manifest.rooms.filter((r) => r.spawns.length && !r.outdoor);
+      (this.house.flies || []).forEach((fly, i) => {
+        if (!rooms.length) return;
         want.set(`fly:${fly.id}`, {
           type: 'arachnotron',
-          room: rooms[h % rooms.length].id,
+          room: rooms[(i + 1) % rooms.length].id,
+          slotInRoom: Math.floor(i / rooms.length),
           fly,
           label: `${fly.name}: a fruit-fly brain on legs`,
           respawn: 20000,
           onKill: () => this.message(`${fly.name} is a connectome. You can't shoot a connectome.`),
         });
-      }
+      });
     }
 
     for (const room of this.house.rooms) {
@@ -511,7 +512,8 @@ export class HouseLink {
     if (!info) return null;
     if (spec.type === 'arachnotron') {
       // 128 units across: only the middle of a room is clear of the walls.
-      return [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
+      const off = [[0, 0], [-100, 0], [100, 0], [0, -100], [0, 100]][(spec.slotInRoom || 0) % 5];
+      return [Math.round((info.bbox.x1 + info.bbox.x2) / 2) + off[0], Math.round((info.bbox.y1 + info.bbox.y2) / 2) + off[1]];
     }
     if (spec.near) {
       const cx = (info.bbox.x1 + info.bbox.x2) / 2;
@@ -549,7 +551,7 @@ export class HouseLink {
           .map((l) => a.state(l.entity_id))
           .filter(isOn)
           .reduce((n, st) => n + (st.attributes.brightness ?? 255) / 255, 0);
-        level = 64 + Math.round((191 * sum) / room.lights.length);
+        level = 88 + Math.round((167 * sum) / room.lights.length);
       }
       if (info.outdoor || /garden|patio|terrace|balcon|yard|altan|ute/i.test(room.name)) {
         const sun = hass && hass.states['sun.sun'];
