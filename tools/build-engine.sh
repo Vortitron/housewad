@@ -3,7 +3,9 @@
 # Output: dist/housewad-engine.js + dist/housewad-engine.wasm
 set -euo pipefail
 cd "$(dirname "$0")/.."
-source "${EMSDK:-$HOME/.cache/emsdk}/emsdk_env.sh" >/dev/null 2>&1
+ENV_SH="${EMSDK:-$HOME/.cache/emsdk}/emsdk_env.sh"
+[ -f "$ENV_SH" ] && source "$ENV_SH" >/dev/null 2>&1
+command -v emcc >/dev/null || { echo "emcc not found: install emsdk" >&2; exit 1; }
 mkdir -p build/engine dist
 
 CFLAGS="-O2 -DFEATURE_SOUND -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -Iengine/doom -Iengine -Wno-everything"

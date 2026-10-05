@@ -57,12 +57,12 @@ const STYLE = `
   .bar .mode.practice { background: #444; color: #eee; }
   .bar .spacer { flex: 1; }
   .bar button { padding: 4px 10px; font-size: 12px; border-width: 1px; }
-  .touch { position: absolute; inset: auto 0 0 0; display: none; justify-content: space-between; padding: 8px; pointer-events: none; }
+  .touch { position: absolute; inset: auto 0 17% 0; display: none; justify-content: space-between; padding: 8px; pointer-events: none; }
   .touch.on { display: flex; }
-  .pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 4px; pointer-events: auto; }
+  .pad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; pointer-events: auto; }
   .pad div, .act div { background: #fff2; border: 1px solid #fff5; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 12px ui-monospace, monospace; }
   .act { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
-  .act div { width: 72px; height: 56px; }
+  .act div { width: 64px; height: 48px; }
   .hint { opacity: .6; }
   .confirm { position: absolute; left: 0; right: 0; bottom: 22%; display: none; justify-content: center; gap: 16px; }
   .confirm.on { display: flex; }
@@ -142,7 +142,7 @@ class HouseWadCard extends HTMLElement {
             </div>
             <div class="small">Practice: nothing in the house moves.<br>For real: shooting and using things controls <b>${esc(allowText)}</b>.</div>
             ${warnings}
-            <div class="small hint">WASD or arrows, mouse to turn, click or Ctrl to fire, E or Space to use</div>
+            <div class="small hint">${matchMedia('(pointer: coarse)').matches ? 'Arrows to move, FIRE and USE buttons. Full screen and turn the phone sideways for a bigger view.' : 'WASD or arrows, mouse to turn, click or Ctrl to fire, E or Space to use'}</div>
           </div>
         </div>
       </ha-card>`;

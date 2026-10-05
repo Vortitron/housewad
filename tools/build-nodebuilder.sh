@@ -4,7 +4,9 @@
 # Output: dist/housewad-zdbsp.js + dist/housewad-zdbsp.wasm
 set -euo pipefail
 cd "$(dirname "$0")/.."
-source "${EMSDK:-$HOME/.cache/emsdk}/emsdk_env.sh" >/dev/null 2>&1
+ENV_SH="${EMSDK:-$HOME/.cache/emsdk}/emsdk_env.sh"
+[ -f "$ENV_SH" ] && source "$ENV_SH" >/dev/null 2>&1
+command -v emcc >/dev/null || { echo "emcc not found: install emsdk" >&2; exit 1; }
 Z=third_party/zdbsp
 [ -d "$Z" ] || git clone -q --depth 1 https://github.com/rheit/zdbsp.git "$Z"
 mkdir -p build/zdbsp dist

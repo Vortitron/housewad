@@ -1,0 +1,45 @@
+# Build everything and publish a release whose tagged tree carries dist/.
+# HACS installs a dashboard card's non-JS files (wasm, the game data) only
+# from a dist/ directory in the release, so the release commit includes it;
+# main never does.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version (e.g. 0.1.0)
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: mymindstorm/setup-emsdk@v14
+      - name: Freedoom
+        run: |
+          mkdir -p third_party && cd third_party
+          curl -sL -o freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+          unzip -q freedoom.zip
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Release commit and tag
+        run: |
+          v="${{ github.event.inputs.version }}"
+          sed -i "s/const VERSION = '[^']*'/const VERSION = '$v'/" card/src/card.js && npm run build:card
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f dist
+          git commit -qm "Release $v"
+          git tag "v$v"
+          git push origin "v$v"
+          gh release create "v$v" --title "house.wad $v" --notes "See the README." --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
