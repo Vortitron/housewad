@@ -13,11 +13,13 @@
 //   flies: true            # HouseFly brains walk the level (shoot one: it gets loomed)
 //   exit_scene: scene.leaving_home   # the exit switch runs this
 //   cheats: { idcoffee: script.make_coffee }   # type a cheat code, run a thing
+//   floorplan: { rooms: [...], doors: [...], exits: [...] }   # the real layout (see planmap.js)
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
 import { buildHouse } from './model.js';
 import { generateMap } from './mapgen.js';
+import { generateFromPlan } from './planmap.js';
 import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW } from './actions.js';
@@ -181,7 +183,10 @@ class HouseWadCard extends HTMLElement {
     this.shadowRoot.querySelector('.start').innerHTML = `<div class="title">HOUSE.WAD</div><div class="sub">Building your house...</div>`;
     try {
       const house = buildHouse(this._hass, { exclude: this.config.exclude || [] });
-      const { lumps, manifest } = generateMap(house);
+      // A floor plan in the card config builds the house as it really is;
+      // without one, rooms go off a corridor. (Inline, not a /local file:
+      // /local is served without a login.)
+      const { lumps, manifest } = this.config.floorplan ? generateFromPlan(this.config.floorplan, house) : generateMap(house);
       const [{ default: createZdbsp }, { default: createEngine }, iwad] = await Promise.all([
         import(/* @vite-ignore */ asset('housewad-zdbsp.js', base)),
         import(/* @vite-ignore */ asset('housewad-engine.js', base)),

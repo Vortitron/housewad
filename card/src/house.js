@@ -63,6 +63,7 @@ export class HouseLink {
     this.corridorSectors = Object.entries(manifest.sectorRoom)
       .filter(([, r]) => r.id.startsWith('_corridor'))
       .map(([s]) => Number(s));
+    if (!this.corridorSectors.length && manifest.hallSectors) this.corridorSectors = manifest.hallSectors;
     this.outdoorSectors = manifest.rooms.flatMap((r) => (r.outdoor ? r.sectors : r.yard !== undefined ? [r.yard] : []));
     this.items = new Map(); // key -> { slot, room, present, pickedAt, tracker }
     this.itemSlot = new Map(); // slot -> key
@@ -688,7 +689,8 @@ export class HouseLink {
     if (spec.type === 'arachnotron') {
       // 128 units across: only the middle of a room is clear of the walls.
       const off = [[0, 0], [-100, 0], [100, 0], [0, -100], [0, 100]][(spec.slotInRoom || 0) % 5];
-      return [Math.round((info.bbox.x1 + info.bbox.x2) / 2) + off[0], Math.round((info.bbox.y1 + info.bbox.y2) / 2) + off[1]];
+      const c = info.center || [(info.bbox.x1 + info.bbox.x2) / 2, (info.bbox.y1 + info.bbox.y2) / 2];
+      return [Math.round(c[0]) + off[0], Math.round(c[1]) + off[1]];
     }
     if (spec.near) {
       const cx = (info.bbox.x1 + info.bbox.x2) / 2;

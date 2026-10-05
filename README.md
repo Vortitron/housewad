@@ -127,7 +127,25 @@ The default allowlist is lights, switches, media players and vacuums. Locks and 
 
 Without a floor plan, each floor becomes a corridor with its rooms down both sides, and floors are joined by stairs (a basement goes down). Rooms are themed by name: kitchens are tiled, garages are concrete, gardens are open to the sky. Every light gets a lamp; switches and screens go on the walls; each lock, garage door or door sensor becomes a real door in the room's outer wall, opening onto a yard. Things with no area end up in a room called *Somewhere*.
 
-Floor-plan import (Sweet Home 3D) is on the way.
+### Your real floor plan
+
+Give the card a `floorplan` and it builds the house as it really is instead: each room's shape as rectangles in metres, the doors between rooms, the doors out, and ceiling heights. Rooms are matched to Home Assistant areas by `area`, so each area's lamps, switches, screens and doors land in its room; areas the plan has no room for go in an annex off the garden.
+
+```yaml
+floorplan:
+  rooms:
+    - { id: hall, name: Hall, area: hall, height: 2.4, rects: [[0, 0, 6, 3], [0, 3, 3, 6]] }
+    - { id: kitchen, name: Kitchen, area: kitchen, rects: [[6, 0, 10, 4]] }
+    - { id: cinema, name: Cinema, area: cinema, height: 4, rects: [[0, 6, 10, 12]] }
+  open: [[hall, kitchen]]            # rooms with no wall where they meet
+  doors:
+    - { rooms: [hall, cinema], at: [[1, 6], [2, 6]] }   # two points on the wall
+  exits:
+    - { room: hall, name: Front door, at: [[0, 1], [0, 2]], outside: front_garden, door: lock.front_door }
+  start: { room: hall, at: [1.5, 1.5] }
+```
+
+The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. Sweet Home 3D import is on the way.
 
 ## Building from source
 
