@@ -19,6 +19,7 @@ struct line_s;
 // mobj->hw_flags
 #define HW_DORMANT 1 // ignores the player until hurt (a docked vacuum)
 #define HW_PUPPET 2  // steered from JavaScript (a fly brain), never attacks
+#define HW_UNLIT 4   // drawn dark whatever the room's light (a lamp switched off)
 
 // Events sent to JavaScript: Module.hwEvent(type, a, b, c)
 enum

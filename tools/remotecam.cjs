@@ -31,7 +31,8 @@ const SP = process.env.SP || '/tmp';
     await page.evaluate(([x, y, a]) => window.__card.engine.module._hw_teleport(x, y, a), [px, py, Math.round((Math.atan2(cam.y - py, cam.x - px) * 180) / Math.PI + 360) % 360]);
     await page.waitForTimeout(3500);
     const painted = await page.evaluate((k) => window.__card.link.cams[k].last, i);
-    console.log(cam.entity, cam.room, 'fetched', painted > 0);
+    const status = await page.evaluate(() => [...window.__card.shadowRoot.querySelectorAll('.status span')].map((e) => e.textContent).join(' | '));
+    console.log(cam.entity, cam.room, 'fetched', painted > 0, '| status:', status);
     await page.screenshot({ path: `${SP}/cam-${cam.entity.replace('.', '_')}.png` });
   }
   await browser.close();

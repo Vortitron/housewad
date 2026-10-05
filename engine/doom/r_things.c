@@ -19,6 +19,7 @@
 
 
 
+#include "hw_house.h" // housewad
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -593,6 +594,11 @@ void R_ProjectSprite (mobj_t* thing)
 
 	vis->colormap = spritelights[index];
     }	
+
+    // housewad: a lamp that is switched off is a dark shape, not a lit one in
+    // a lit room. (Fixed colormaps, like the light visor, still win.)
+    if ((thing->hw_flags & HW_UNLIT) && vis->colormap && !fixedcolormap)
+	vis->colormap = colormaps + 25 * 256;
 }
 
 

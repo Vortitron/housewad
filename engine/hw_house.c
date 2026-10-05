@@ -238,6 +238,10 @@ void hw_set_lamp(int slot, int on)
     if (mo == NULL || mo->type != MT_HW_LAMP)
         return;
     P_SetMobjState(mo, on ? S_HW_LAMP_ON : S_HW_LAMP_OFF);
+    if (on)
+        mo->hw_flags &= ~HW_UNLIT;
+    else
+        mo->hw_flags |= HW_UNLIT;
 }
 
 EMSCRIPTEN_KEEPALIVE
