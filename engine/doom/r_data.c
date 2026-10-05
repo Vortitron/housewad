@@ -910,3 +910,50 @@ void R_PrecacheLevel (void)
 
 
 
+
+// housewad: live pictures on walls ------------------------------------------
+//
+// A camera's picture is written straight into a wall texture: palette
+// indices, column by column, width*height bytes. The first write gives the
+// texture a block of its own and points every column at it, so textures that
+// were drawn straight from a patch work too.
+
+#include <emscripten.h>
+
+EMSCRIPTEN_KEEPALIVE
+int hw_texture_lookup(const char *name, int *out)
+{
+    int tex = R_CheckTextureNumForName((char *) name);
+
+    if (tex < 0)
+        return -1;
+    out[0] = textures[tex]->width;
+    out[1] = textures[tex]->height;
+    return tex;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int hw_texture_write(int tex, const byte *pixels)
+{
+    texture_t *texture;
+    int x, size;
+
+    if (tex < 0 || tex >= numtextures)
+        return 0;
+    texture = textures[tex];
+    size = texture->width * texture->height;
+    if (size > 0x10000)
+        return 0;
+    if (texturecompositesize[tex] != size || texturecolumnlump[tex][0] != -1 || !texturecomposite[tex])
+    {
+        texturecomposite[tex] = Z_Malloc(size, PU_STATIC, NULL);
+        texturecompositesize[tex] = size;
+        for (x = 0; x < texture->width; x++)
+        {
+            texturecolumnlump[tex][x] = -1;
+            texturecolumnofs[tex][x] = x * texture->height;
+        }
+    }
+    memcpy(texturecomposite[tex], pixels, size);
+    return 1;
+}

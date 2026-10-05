@@ -55,6 +55,7 @@ export function makeFakeHass(onUpdate) {
   add('binary_sensor.bedroom_window', 'on', { friendly_name: 'Bedroom Window', device_class: 'window' }, 'bedroom');
   add('climate.house', 'heat', { friendly_name: 'House Heating', hvac_action: 'heating' }, 'hallway');
   add('sun.sun', 'above_horizon', { friendly_name: 'Sun' }, null);
+  add('camera.living_room', 'idle', { friendly_name: 'Living Room Camera', entity_picture: '/tools/harness/cam.svg' }, 'living_room');
   add('sensor.test_fly_mode', 'walk', { friendly_name: 'Test Fly Mode' }, null);
   add('sensor.test_fly_heading', '90', { friendly_name: 'Test Fly Heading' }, null);
   add('sensor.test_fly_kenyon_cells_active', '30', { friendly_name: 'Test Fly Kenyon cells active' }, null);

@@ -15,6 +15,7 @@ house.wad is a Home Assistant dashboard card. It reads your floors, areas and de
 | Use the big door in the garage | The garage door opens (after a Y/N prompt) |
 | Room light level | Follows that room's real lights |
 | Doors | Open when the real door is open or unlocked |
+| A camera in a room | A screen on that room's wall shows its live picture |
 
 ### The house's problems are demons
 
@@ -93,7 +94,7 @@ The default allowlist is lights, switches, media players and vacuums. Locks and 
 
 Without a floor plan, each floor becomes a corridor with its rooms down both sides, and floors are joined by stairs (a basement goes down). Rooms are themed by name: kitchens are tiled, garages are concrete, gardens are open to the sky. Every light gets a lamp; switches and screens go on the walls; each lock, garage door or door sensor becomes a real door in the room's outer wall, opening onto a yard. Things with no area end up in a room called *Somewhere*.
 
-Floor-plan import (Sweet Home 3D) and live camera feeds on in-game screens are on the way.
+Floor-plan import (Sweet Home 3D) is on the way.
 
 ## Building from source
 

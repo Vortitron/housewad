@@ -67,6 +67,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
       presence: [],
       windows: [],
       climates: [],
+      cameras: [],
       doors: [],
     });
   }
@@ -117,6 +118,9 @@ export function buildHouse(hass, { exclude = [] } = {}) {
         break;
       case 'climate':
         roomFor(entityId).climates.push(item);
+        break;
+      case 'camera':
+        roomFor(entityId).cameras.push(item);
         break;
       case 'lock':
         locks.push(item);
@@ -182,7 +186,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
   const houseRooms = [...rooms.values()].filter(
     (r) =>
       r.id !== UNASSIGNED ||
-      r.lights.length + r.switches.length + r.media.length + r.vacuums.length + r.doors.length > 0,
+      r.lights.length + r.switches.length + r.media.length + r.vacuums.length + r.doors.length + r.cameras.length > 0,
   );
 
   return {

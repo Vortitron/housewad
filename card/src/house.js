@@ -44,7 +44,7 @@ const isOn = (st) => !!st && st.state === 'on';
 const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
 
 export class HouseLink {
-  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, onConfirm, log }) {
+  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, palette = null, onConfirm, log }) {
     this.engine = engine;
     this.m = engine.module;
     this.manifest = manifest;
@@ -72,11 +72,102 @@ export class HouseLink {
     this.lampSlot = new Map(manifest.lamps.map((l, i) => [i + 1, l]));
     this.lines = new Map(Object.entries(manifest.lines).map(([k, v]) => [Number(k), v]));
     this.doorById = new Map(manifest.doors.map((d) => [d.id, d]));
+    this._initCameras(palette);
+  }
+
+  // Cameras: each screen on the wall is a texture the camera's picture is
+  // written into, about once a second while the player is near enough to see.
+  _initCameras(palette) {
+    this.cams = [];
+    if (!palette || !this.manifest.cameras || !this.manifest.cameras.length || typeof document === 'undefined') return;
+    this.palette = palette;
+    this.paletteCache = new Int16Array(32768).fill(-1);
+    for (const cam of this.manifest.cameras) {
+      const tex = this.m.ccall('hw_texture_lookup', 'number', ['string', 'number'], [cam.texture, this.out]);
+      if (tex < 0) continue;
+      const w = this.m.HEAP32[this.out >> 2];
+      const h = this.m.HEAP32[(this.out >> 2) + 1];
+      this.cams.push({ ...cam, tex, w, h, busy: false, last: 0 });
+    }
+    if (!this.cams.length) return;
+    const max = Math.max(...this.cams.map((c) => c.w * c.h));
+    this.camBuf = this.m._malloc(max);
+    this.camCanvas = document.createElement('canvas');
+    this.camCtx = this.camCanvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  _nearestColour(r, g, b) {
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    let idx = this.paletteCache[key];
+    if (idx >= 0) return idx;
+    let best = 0;
+    let bestD = Infinity;
+    const p = this.palette;
+    for (let i = 0; i < 256; i++) {
+      const dr = p[i * 3] - r;
+      const dg = p[i * 3 + 1] - g;
+      const db = p[i * 3 + 2] - b;
+      const d = 3 * dr * dr + 4 * dg * dg + 2 * db * db;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    this.paletteCache[key] = best;
+    return best;
+  }
+
+  cameraTick() {
+    if (!this.ready || !this.cams.length) return;
+    const p = this.player();
+    if (!p) return;
+    const now = Date.now();
+    for (const cam of this.cams) {
+      if (cam.busy || now - cam.last < 900) continue;
+      if (Math.hypot(cam.x - p.x, cam.y - p.y) > 1400) continue;
+      const st = this.actions.state(cam.entity);
+      const url = st && st.attributes && st.attributes.entity_picture;
+      if (!url) continue;
+      cam.busy = true;
+      cam.last = now;
+      const img = new Image();
+      img.onload = () => {
+        cam.busy = false;
+        if (this.ready) this._paint(cam, img);
+      };
+      img.onerror = () => {
+        cam.busy = false;
+      };
+      img.src = url + (url.includes('?') ? '&' : '?') + '_hw=' + now;
+    }
+  }
+
+  _paint(cam, img) {
+    const { w, h } = cam;
+    this.camCanvas.width = w;
+    this.camCanvas.height = h;
+    // Fill the screen, cropping the long side.
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const scale = Math.max(w / iw, h / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    this.camCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    const px = this.camCtx.getImageData(0, 0, w, h).data;
+    const out = this.m.HEAPU8.subarray(this.camBuf, this.camBuf + w * h);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        const i = (y * w + x) * 4;
+        out[x * h + y] = this._nearestColour(px[i], px[i + 1], px[i + 2]);
+      }
+    }
+    this.m._hw_texture_write(cam.tex, this.camBuf);
   }
 
   close() {
     this.ready = false;
     this.m._free(this.out);
+    if (this.camBuf) this.m._free(this.camBuf);
   }
 
   // Engine calls ------------------------------------------------------------
@@ -258,6 +349,8 @@ export class HouseLink {
       });
     } else if (ref.kind === 'door') {
       this._doorUsed(this.doorById.get(ref.door));
+    } else if (ref.kind === 'camera') {
+      this.message(`${friendlyName(this._hass(), ref.entity)}: live`);
     }
   }
 

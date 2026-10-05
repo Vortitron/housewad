@@ -12,7 +12,11 @@
 
 import { MapBuilder, encodeMap, ML } from './geometry.js';
 
-export const SPECIAL = { SWITCH: 900, MEDIA: 901, DOOR: 902 };
+export const SPECIAL = { SWITCH: 900, MEDIA: 901, DOOR: 902, CAMERA: 903 };
+
+// 128x128 textures the generated house never uses otherwise; each camera's
+// picture is written into one of them while the game runs.
+export const CAMERA_TEXTURES = ['COMPUTE1', 'COMPUTE3', 'SP_DUDE1', 'SP_DUDE2', 'MARBFACE', 'ZZWOLF1', 'SKULWALL', 'CRATWIDE'];
 
 export const THING = {
   PLAYER1: 1,
@@ -59,7 +63,7 @@ function roomSize(room) {
   let width = 384;
   let depth = 384;
   // Wall fixtures go on the side walls first, then the outer wall.
-  const need = switches + media * 2;
+  const need = switches + (media + (room.cameras || []).length) * 2;
   const sideSlots = (d) => 2 * Math.floor((d - 96) / SLOT);
   const outerSlots = (w) => Math.max(0, Math.floor((w - 64 - doors * (DOOR + 64)) / SLOT));
   while (sideSlots(depth) + outerSlots(width) < need && depth < 1024) depth += SLOT;
@@ -76,6 +80,7 @@ export function generateMap(house) {
     lamps: [],
     lines: {},
     doors: [],
+    cameras: [],
     sectorRoom: {},
     start: null,
   };
@@ -303,6 +308,15 @@ function placeRoom(b, manifest, room, { x0, z, dir, width, depth, doorIndexStart
     const slot = take(true);
     if (!slot) break;
     b.addFeature(slot.a, slot.b, { tex: 'COMPSTA1', special: SPECIAL.MEDIA, ref: { kind: 'media', entity: media.entity_id } });
+    info.fixtures.push(slot.c);
+  }
+  for (const cam of room.cameras || []) {
+    if (manifest.cameras.length >= CAMERA_TEXTURES.length) break;
+    const slot = take(true);
+    if (!slot) break;
+    const texture = CAMERA_TEXTURES[manifest.cameras.length];
+    b.addFeature(slot.a, slot.b, { tex: texture, special: SPECIAL.CAMERA, ref: { kind: 'camera', entity: cam.entity_id } });
+    manifest.cameras.push({ entity: cam.entity_id, texture, room: room.id, x: (slot.a[0] + slot.b[0]) / 2, y: (slot.a[1] + slot.b[1]) / 2 });
     info.fixtures.push(slot.c);
   }
   for (const sw of room.switches) {

@@ -16,7 +16,7 @@
 import { DoomEngine, KEY } from './engine.js';
 import { buildHouse } from './model.js';
 import { generateMap } from './mapgen.js';
-import { writeWad } from './wad.js';
+import { writeWad, readWad } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW } from './actions.js';
 import { HouseLink } from './house.js';
@@ -197,6 +197,7 @@ class HouseWadCard extends HTMLElement {
         rules: this.config.rules || {},
         confirmUnlock: this.config.confirm_unlock !== false,
         flies: this.config.flies,
+        palette: playpal(iwad),
         onConfirm: (pending) => {
           const box = this.shadowRoot.querySelector('.confirm');
           if (box) box.classList.toggle('on', pending);
@@ -208,6 +209,7 @@ class HouseWadCard extends HTMLElement {
       this.engine.sound.resume();
       this._bindInput();
       this.timers.push(setInterval(() => this.link && this.link.tick(), 250));
+      this.timers.push(setInterval(() => this.link && this.link.cameraTick(), 300));
       this.timers.push(setInterval(() => this.link && this.link.sync(), 1000));
       this.shadowRoot.querySelector('.screen').focus();
     } catch (e) {
@@ -333,6 +335,17 @@ class HouseWadCard extends HTMLElement {
     if (this.engine) this.engine.stop();
     this.engine = null;
     if (document.pointerLockElement === this) document.exitPointerLock();
+  }
+}
+
+// The game's first palette: 256 RGB triples.
+function playpal(iwad) {
+  try {
+    const w = readWad(iwad);
+    const lump = w.find('PLAYPAL');
+    return lump ? w.data(lump).slice(0, 768) : null;
+  } catch (e) {
+    return null;
   }
 }
 
