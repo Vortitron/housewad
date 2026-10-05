@@ -178,7 +178,7 @@ export function generateFromPlan(plan, house) {
     const yid = outsideHr ? outsideHr.id : `_yard_${i}`;
     const ys = b.addSector({ floor: info.floorZ, ceil: info.floorZ + 288, floorTex: 'GRASS1', ceilTex: 'F_SKY1', wall: 'BRICK7', light: 200, priority: 1 });
     b.addRect(ys, yard.x1, yard.y1, yard.x2, yard.y2);
-    yards.push({ id: yid, name: outsideHr ? outsideHr.name : ex.name ? `Outside the ${ex.name.toLowerCase()}` : 'Outside', sector: ys, rect: yard, house: outsideHr, floorZ: info.floorZ });
+    yards.push({ id: yid, name: outsideHr ? outsideHr.name : ex.name ? `Outside the ${ex.name.toLowerCase()}` : 'Outside', sector: ys, rect: yard, house: outsideHr, floorZ: info.floorZ, door: info });
     manifest.sectorRoom[ys] = { id: yid, name: yards[yards.length - 1].name, outdoor: true };
 
     const ds = b.addSector({ floor: info.floorZ, ceil: info.floorZ, floorTex: themeFor(info.name).floor, ceilTex: 'CEIL3_5', wall: 'DOORTRAK', light: 160, priority: 0 });
@@ -262,9 +262,10 @@ export function generateFromPlan(plan, house) {
       const r = [...roomOf.values()].find((q) => q.id === y.id);
       r.sectors.push(y.sector);
       r.rects.push(y.rect);
+      if (!r.hosts.includes(y.door)) r.hosts.push(y.door);
       continue;
     }
-    roomOf.set(`_yardroom_${y.id}`, { id: y.id, name: y.name, sectors: [y.sector], floorZ: y.floorZ, rects: [y.rect], bbox: y.rect, center: centreOf([y.rect]), spawns: [], outdoor: true, fixtures: [], house: y.house, height: 288 });
+    roomOf.set(`_yardroom_${y.id}`, { id: y.id, name: y.name, sectors: [y.sector], floorZ: y.floorZ, rects: [y.rect], bbox: y.rect, center: centreOf([y.rect]), spawns: [], outdoor: true, fixtures: [], house: y.house, height: 288, hosts: [y.door] });
   }
 
   // Whole-house areas: their things go round the plan's indoor rooms.
@@ -274,6 +275,19 @@ export function generateFromPlan(plan, house) {
   for (const hr of anywhere)
     for (const k of ['lights', 'switches', 'media', 'cameras'])
       for (const e of hr[k] || []) if (hosts.length) extra.get(hosts[turn++ % hosts.length])[k].push(e);
+
+  // Screens that find no wall wide enough in their own room (a yard is only
+  // a few metres of garden) are hung somewhere else afterwards.
+  const overflow = [];
+  const placeScreen = (s, info, kind, entity) => {
+    if (kind === 'media') {
+      b.addFeature(s.a, s.b128, { tex: 'COMPSTA1', special: SPECIAL.MEDIA, ref: { kind: 'media', entity } });
+      return;
+    }
+    const texture = CAMERA_TEXTURES[manifest.cameras.length];
+    b.addFeature(s.a, s.b128, { tex: texture, special: SPECIAL.CAMERA, ref: { kind: 'camera', entity } });
+    manifest.cameras.push({ entity, texture, room: info.id, x: (s.a[0] + s.b128[0]) / 2, y: (s.a[1] + s.b128[1]) / 2 });
+  };
 
   // Fixtures, lamps, spawn spots, room by room.
   for (const info of roomOf.values()) {
@@ -289,16 +303,14 @@ export function generateFromPlan(plan, house) {
     if (hr) {
       for (const media of hr.media) {
         const s = take(true);
-        if (!s) break;
-        b.addFeature(s.a, s.b128, { tex: 'COMPSTA1', special: SPECIAL.MEDIA, ref: { kind: 'media', entity: media.entity_id } });
+        if (s) placeScreen(s, info, 'media', media.entity_id);
+        else overflow.push({ kind: 'media', entity: media.entity_id, from: info });
       }
       for (const cam of hr.cameras || []) {
-        if (manifest.cameras.length >= CAMERA_TEXTURES.length) break;
         const s = take(true);
-        if (!s) break;
-        const texture = CAMERA_TEXTURES[manifest.cameras.length];
-        b.addFeature(s.a, s.b128, { tex: texture, special: SPECIAL.CAMERA, ref: { kind: 'camera', entity: cam.entity_id } });
-        manifest.cameras.push({ entity: cam.entity_id, texture, room: info.id, x: (s.a[0] + s.b128[0]) / 2, y: (s.a[1] + s.b128[1]) / 2 });
+        if (s) {
+          if (manifest.cameras.length < CAMERA_TEXTURES.length) placeScreen(s, info, 'camera', cam.entity_id);
+        } else overflow.push({ kind: 'camera', entity: cam.entity_id, from: info });
       }
       for (const sw of hr.switches) {
         const s = take(false);
@@ -319,12 +331,31 @@ export function generateFromPlan(plan, house) {
   b.addThing(at[0] + 48, at[1] + 24, THING.SHOTGUN);
   b.addThing(at[0] + 48, at[1] - 24, THING.SHELLS);
   // The way out: an exit switch on a free wall of the start room.
-  const exitSlot = startRoom.slotsLeft && startRoom.slotsLeft.shift();
+  // A narrow stretch of wall if there is one: the wide ones take screens.
+  const narrow = (startRoom.slotsLeft || []).findIndex((sl) => sl.len < 128);
+  const exitSlot = startRoom.slotsLeft && (narrow >= 0 ? startRoom.slotsLeft.splice(narrow, 1)[0] : startRoom.slotsLeft.shift());
   if (exitSlot) {
     const mid = [(exitSlot.a[0] + exitSlot.b64[0]) / 2, (exitSlot.a[1] + exitSlot.b64[1]) / 2];
     const half = [(exitSlot.b64[0] - exitSlot.a[0]) / 4, (exitSlot.b64[1] - exitSlot.a[1]) / 4];
     b.addFeature([mid[0] - half[0], mid[1] - half[1]], [mid[0] + half[0], mid[1] + half[1]], { mid: 'SW1EXIT', special: 11, ref: { kind: 'exit' } });
   }
+  // The screens that did not fit: an outside camera goes on the wall inside
+  // the door that leads out there, like a door entry screen; anything else
+  // in the nearest room with a wall to spare.
+  const indoor = [...roomOf.values()].filter((r) => !r.outdoor);
+  for (const item of overflow) {
+    if (item.kind === 'camera' && manifest.cameras.length >= CAMERA_TEXTURES.length) continue;
+    const from = item.from.center;
+    const near = (r) => Math.hypot(r.center[0] - from[0], r.center[1] - from[1]);
+    const order = [...new Set([...(item.from.hosts || []), ...indoor.filter((r) => r.floorZ === item.from.floorZ).sort((p, q) => near(p) - near(q))])];
+    for (const host of order) {
+      const i = (host.slotsLeft || []).findIndex((sl) => sl.len >= 128);
+      if (i < 0) continue;
+      placeScreen(host.slotsLeft.splice(i, 1)[0], host, item.kind, item.entity);
+      break;
+    }
+  }
+
   // Pickups, for flavour, by room theme.
   for (const info of roomOf.values()) {
     const n = info.name || '';

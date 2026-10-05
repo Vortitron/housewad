@@ -280,6 +280,9 @@ class HouseWadCard extends HTMLElement {
       this.timers.push(setInterval(() => this.link && this.link.cameraTick(), 300));
       this.timers.push(setInterval(() => this._showStatus(), 250));
       this.timers.push(setInterval(() => this.link && this.link.sync(), 1000));
+      // The level is built once; say so when the house gains something.
+      this._placed = houseThings(house);
+      this.timers.push(setInterval(() => this._lookForNewThings(), 15000));
       this.shadowRoot.querySelector('.screen').focus();
     } catch (e) {
       console.error('[housewad]', e);
@@ -430,6 +433,24 @@ class HouseWadCard extends HTMLElement {
     set('world', s.world || '');
   }
 
+  // Lamps, switches, screens, cameras and doors added to the house since the
+  // level was built: they appear next game, so tell the player once.
+  _lookForNewThings() {
+    if (!this.link || !this._hass) return;
+    let now;
+    try {
+      now = houseThings(buildHouse(this._hass, { exclude: this.config.exclude || [] }));
+    } catch (e) {
+      return;
+    }
+    const fresh = [...now].filter((id) => !this._placed.has(id));
+    if (!fresh.length) return;
+    for (const id of fresh) this._placed.add(id);
+    const name = (id) => (this._hass.states[id] && this._hass.states[id].attributes.friendly_name) || id;
+    const names = fresh.slice(0, 3).map(name).join(', ') + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : '');
+    this.link.message(`New in the house: ${names}. Quit and play again to add ${fresh.length === 1 ? 'it' : 'them'}.`);
+  }
+
   _queueSync() {
     if (!this.link || this.syncQueued) return;
     this.syncQueued = true;
@@ -461,6 +482,17 @@ function playpal(iwad) {
   } catch (e) {
     return null;
   }
+}
+
+// Every entity the level can hold (not sensors, which change all the time).
+function houseThings(house) {
+  const ids = new Set();
+  for (const r of house.rooms) {
+    for (const k of ['lights', 'switches', 'media', 'vacuums', 'cameras']) for (const e of r[k] || []) ids.add(e.entity_id);
+    for (const d of r.doors || []) ids.add(d.lock || d.cover || d.sensor);
+  }
+  ids.delete(undefined);
+  return ids;
 }
 
 function esc(s) {

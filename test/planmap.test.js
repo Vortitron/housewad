@@ -101,3 +101,21 @@ test('levels sit beside the house and stairs teleport between them', () => {
   const lamp = manifest.lamps.find((l) => l.entity === 'light.house_wide');
   assert.ok(lamp && manifest.rooms.some((r) => r.id === lamp.room));
 });
+
+test("an outside area's camera that the yard has no wall for goes inside, by its door", () => {
+  const withCams = {
+    ...house,
+    rooms: house.rooms.map((r) => (r.id === 'garden' ? { ...r, cameras: [{ entity_id: 'camera.front_snapshot' }], media: [{ entity_id: 'media_player.porch' }] } : r)),
+  };
+  if (!withCams.rooms.some((r) => r.id === 'garden')) withCams.rooms.push(room('garden', 'Garden', { cameras: [{ entity_id: 'camera.front_snapshot' }], media: [{ entity_id: 'media_player.porch' }] }));
+  const { manifest } = generateFromPlan(plan, withCams);
+  const cam = manifest.cameras.find((c) => c.entity === 'camera.front_snapshot');
+  assert.ok(cam, 'the camera has a screen somewhere');
+  // The hall (the front door's room) is all doors here, so the nearest room
+  // with a wall to spare takes it: indoors, on the same floor.
+  const host = manifest.rooms.find((r) => r.id === cam.room);
+  assert.ok(host && !host.outdoor, `indoors, not out in the yard (${cam.room})`);
+  assert.equal(host.floorZ, 0);
+  assert.ok(Object.values(manifest.lines).some((r) => r.kind === 'media' && r.entity === 'media_player.porch'), 'and so does the media player');
+  assert.ok(Object.values(manifest.lines).some((r) => r.kind === 'exit'), 'the exit switch keeps its place');
+});

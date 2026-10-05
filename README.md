@@ -141,6 +141,10 @@ The default allowlist is lights, switches, media players and vacuums. Locks and 
 
 ## How the level is built
 
+The level is built when you press Practice or Play for real; while you play, states (lights, doors, the vacuum, cameras) follow the house live. A device you add to Home Assistant during a game is announced ("New in the house: …") and appears in the next one.
+
+A camera or media player in an outside area gets its screen on the wall inside the door that leads out there, like a door entry screen, since a yard has little wall to hang one on.
+
 Without a floor plan, each floor becomes a corridor with its rooms down both sides, and floors are joined by stairs (a basement goes down). Rooms are themed by name: kitchens are tiled, garages are concrete, gardens are open to the sky. Every light gets a lamp; switches and screens go on the walls; each lock, garage door or door sensor becomes a real door in the room's outer wall, opening onto a yard. Things with no area end up in a room called *Somewhere*.
 
 ### Your real floor plan
