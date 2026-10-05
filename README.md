@@ -2,7 +2,7 @@
 
 **Your house, as a Doom level. Shooting the lamp turns off the light.**
 
-[![house.wad: shoot the lamp in Doom and the real light goes off; the spider is a real fruit-fly brain; the front door asks Y/N before it unlocks](https://housefly.vome.io/media/housewad-demo.gif)](https://housefly.vome.io/media/housewad-demo.mp4)
+[![house.wad: shoot the lamp in Doom and the real light goes off; the spider is a real fruit-fly brain; the front door asks Y/N before it unlocks](https://housefly.vome.io/media/housewad-readme.gif)](https://housefly.vome.io/media/housewad-demo.mp4)
 
 *Click for the full 42-second video: the lamp, a fruit-fly brain, the front door, the robot vacuum, a camera on the wall, and the tally screen.*
 
