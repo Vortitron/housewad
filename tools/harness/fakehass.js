@@ -181,7 +181,7 @@ export function addChores(hass, { smoke = true } = {}) {
 // People Bermuda follows: Alex's phone sends the Companion app's beacon and
 // Bermuda has it in the Kitchen; the hall tablet sends one too, but it is a
 // Fully Kiosk wall screen. withSam adds a second person nobody follows.
-export function addPeople(hass, { withSam = false } = {}) {
+export function addPeople(hass, { withSam = false, nearHall = false } = {}) {
   const old = new Date(Date.now() - 3600e3).toISOString();
   const add = (entityId, state, attributes, platform) => {
     hass.states[entityId] = { entity_id: entityId, state, attributes, last_changed: old, last_updated: old };
@@ -195,5 +195,9 @@ export function addPeople(hass, { withSam = false } = {}) {
   add('sensor.bermuda_bbbb1111222233334444555566667777_100_1_area', 'Hallway', { friendly_name: 'Hall tablet Area' }, 'bermuda');
   add('binary_sensor.hall_tablet_kiosk_mode', 'on', { friendly_name: 'Hall tablet Kiosk mode' }, 'fully_kiosk');
   if (withSam) add('person.sam', 'home', { friendly_name: 'Sam', device_trackers: ['device_tracker.sam_phone'] }, 'person');
+  // The hall tablet's Beacon monitor hears Alex's phone 1.5 m away: Alex is
+  // in the hall, whatever Bermuda's nearest proxy says.
+  add('sensor.hall_tablet_beacon_monitor', 'Monitoring', { friendly_name: 'Hall tablet Beacon monitor', ...(nearHall ? { 'aaaa1111-2222-3333-4444-555566667777_100_1': 1.5 } : { 'aaaa1111-2222-3333-4444-555566667777_100_1': 9.2 }) }, 'mobile_app');
+  hass.entities['sensor.hall_tablet_beacon_monitor'].area_id = 'hallway';
   return hass;
 }

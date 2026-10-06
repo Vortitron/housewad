@@ -277,6 +277,11 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     // A phone that is a person is not a keycard lying about.
     trackers: findTrackers(hass, exclude).filter((t) => !people.some((p) => p.area === t.entity_id)),
     people,
+    // Tablets and phones that listen for beacons (the Companion app's Beacon
+    // monitor) and are in an area: a phone close to one is in that room.
+    listeners: Object.keys(hass.states)
+      .filter((id) => /^sensor\..+_beacon_monitor$/.test(id) && areaOf(id) && rooms.has(areaOf(id)))
+      .map((id) => ({ entity_id: id, room: areaOf(id) })),
     persons: Object.keys(hass.states).filter((id) => id.startsWith('person.')),
     world,
   };
@@ -304,7 +309,7 @@ export function findPeople(hass, exclude = []) {
     const person = persons.find((p) => (p.attributes.device_trackers || []).includes(`device_tracker.${phone}`));
     const tracker = hass.states[`device_tracker.${phone}`];
     const name = person ? person.attributes.friendly_name || person.entity_id : (tracker && tracker.attributes.friendly_name) || phone.replace(/_/g, ' ');
-    out.push({ id: phone, name, person: person ? person.entity_id : null, area });
+    out.push({ id: phone, name, person: person ? person.entity_id : null, area, beacon: String(beacon).toLowerCase() });
   }
   return out;
 }

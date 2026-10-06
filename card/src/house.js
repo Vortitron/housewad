@@ -578,7 +578,21 @@ export class HouseLink {
     // lives here is either followed or out, or the light of somebody we
     // cannot see would be shot out from under them.
     const people = (this.house.people || []).map((p) => ({ ...p, st: a.state(p.area) }));
-    const whereIs = new Map(people.map((p) => [p.id, p.st ? this._roomByName(p.st.state) : null]));
+    // A tablet that hears a phone close by knows better than Bermuda's
+    // nearest proxy, especially in a room with no proxy of its own.
+    const listeners = [
+      ...this.manifest.rooms.flatMap((m) => (m.listeners || []).map((entity) => ({ entity, room: m.id, near: m.near || 3 }))),
+      ...(this.house.listeners || []).map((l) => ({ entity: l.entity_id, room: l.room, near: 3 })),
+    ];
+    const heardIn = (p) => {
+      let best = null;
+      for (const l of listeners) {
+        const d = parseFloat(a.state(l.entity)?.attributes?.[p.beacon]);
+        if (d >= 0 && d <= l.near && (!best || d < best.d)) best = { room: l.room, d };
+      }
+      return best && best.room;
+    };
+    const whereIs = new Map(people.map((p) => [p.id, heardIn(p) || (p.st ? this._roomByName(p.st.state) : null)]));
     const followed = new Set(people.map((p) => p.person).filter(Boolean));
     const everyoneKnown =
       people.length > 0 &&
@@ -745,6 +759,22 @@ export class HouseLink {
           onKill: () => this.message(`That didn't put it out. Go and look in the ${room.name}.`),
         });
       }
+    }
+
+    // Somebody in a room of the plan that is no area in Home Assistant (a
+    // hallway with only a wall tablet in it): an imp there too.
+    for (const info of this.manifest.rooms) {
+      if (this.houseRoom.has(info.id) || imps >= MAX_IMPS) continue;
+      const here = people.filter((p) => whereIs.get(p.id) === info.id);
+      if (!here.length) continue;
+      imps++;
+      const who = here.map((p) => p.name).join(' and ');
+      want.set(`imp:${info.id}`, {
+        type: 'imp',
+        room: info.id,
+        label: `${who}: in the ${info.name}`,
+        onKill: () => this.message(`That was only ${who}. Still in the ${info.name}.`),
+      });
     }
 
     // Rooms that are spooky in real life are spooky in Doom.

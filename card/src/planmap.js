@@ -30,6 +30,10 @@
 // Areas that mean the whole house ("anywhere": ["residence"]) get no room of
 // their own: their lamps and switches are spread over the plan's rooms.
 //
+// A room can name a tablet that listens for phones' beacons (the Companion
+// app's Beacon monitor): "listeners": ["sensor.saga_beacon_monitor"], and
+// "near" (metres, default 3). A phone that close to it is in that room.
+//
 // Rooms are matched to Home Assistant areas by "area" (id or name), so the
 // lamps, switches, screens and doors of an area land in its room. Areas with
 // devices that the plan has no room for go in an annex off the back garden.
@@ -377,7 +381,7 @@ export function generateFromPlan(plan, house) {
   }
 
   for (const info of roomOf.values()) {
-    manifest.rooms.push({ id: info.id, name: info.name, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
+    manifest.rooms.push({ id: info.id, name: info.name, listeners: (info.plan && info.plan.listeners) || [], near: info.plan && info.plan.near, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
   }
   // Bridges and line problems flicker the lights of the room you start in.
   manifest.hallSectors = startRoom.sectors.slice(0, 1);

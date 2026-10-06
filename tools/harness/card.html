@@ -18,7 +18,7 @@ window.hass = makeFakeHass((h) => { card.hass = h; window.hass = h; });
 // ?chores: a dishwasher with chores waiting, beans running out, smoke.
 if (params.has('chores')) addChores(window.hass);
 // ?people (or ?people=sam): Alex's phone in the Kitchen, a kiosk tablet, maybe Sam unfollowed.
-if (params.has('people')) addPeople(window.hass, { withSam: params.get('people') === 'sam' });
+if (params.has('people')) addPeople(window.hass, { withSam: params.get('people') === 'sam', nearHall: params.get('people') === 'hall' });
 card.hass = window.hass;
 window.card = card;
 window.booted = true;

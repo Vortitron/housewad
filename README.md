@@ -64,6 +64,8 @@ If killing a monster doesn't fix the problem (the light didn't turn off, say), t
 
 **People, by Bluetooth.** Turn on the Home Assistant Companion app's *BLE Transmitter* on a phone (Settings → Companion app → Manage sensors), and pick its iBeacon in Bermuda's *Select Devices*. The game finds the phone from the beacon id and names it after the person it belongs to. A room with someone in it is occupied. A room only counts as empty, for the wasted-light rule, if everyone in Home Assistant is followed this way or away from home: otherwise a lamp someone is reading by could be shot out from under them. A wall tablet running Fully Kiosk is a screen, not a person.
 
+A tablet can be a listener for a room with no Bluetooth proxy. The Companion app's *Beacon monitor* reports how far away each beacon it hears is, and a phone within 3 m of the tablet is in the tablet's room, whatever Bermuda's nearest proxy says. Put the tablet's device in an area, or name it in a plan room: `listeners: [sensor.hall_tablet_beacon_monitor]`, `near: 3`.
+
 ### The outside world
 
 If the home watches public switches from [sync.vome.io](https://sync.vome.io) (the [Vome](https://github.com/Vortitron/VomeSync) integration's shared switches, which follow real things: bridges opening, services going down, earthquakes, rocket launches), the level hears about them:

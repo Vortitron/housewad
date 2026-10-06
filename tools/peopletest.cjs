@@ -38,6 +38,10 @@ const assert = require('assert');
   const samExtra = Object.keys(withSam).filter((k) => k.startsWith('soul:') && !plain[k]);
   assert.deepEqual(samExtra, [], "with Sam unfollowed, nobody else's light is called wasted");
   assert.equal(withSam['imp:kitchen'], 'Alex: in the Kitchen', 'but Alex is still in the kitchen');
+  // The hall tablet hears Alex close by: the hall, not Bermuda's kitchen.
+  const hall = await run('?people=hall');
+  assert.equal(hall['imp:hallway'], 'Alex: in the Hallway', 'a listening tablet close by wins');
+  assert.ok(!hall['imp:kitchen'] || hall['imp:kitchen'] !== 'Alex: in the Kitchen', 'and Alex is not in two places');
   console.log('people: all passed');
   await b.close();
 })().catch((e) => { console.error(e); process.exit(1); });

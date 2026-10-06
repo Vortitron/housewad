@@ -132,3 +132,11 @@ test('a narrow room still gets its props and somewhere for a demon to stand', ()
   const room = manifest.rooms.find((r) => r.name === 'Spooky toilet');
   assert.ok(room.spawns.length > 0 || room.center, 'a spot, or at least its middle');
 });
+
+test('a plan room can name the tablet that listens for phones in it', () => {
+  const withTablet = { ...plan, rooms: plan.rooms.map((r) => (r.id === 'hall2' ? { ...r, listeners: ['sensor.saga_beacon_monitor'], near: 2.5 } : r)) };
+  const { manifest } = generateFromPlan(withTablet, house);
+  const cinema = manifest.rooms.find((r) => r.name === 'Cinema');
+  assert.deepEqual(cinema.listeners, ['sensor.saga_beacon_monitor']);
+  assert.equal(cinema.near, 2.5);
+});
