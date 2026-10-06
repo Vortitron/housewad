@@ -573,15 +573,33 @@ export class HouseLink {
       });
     }
 
+    // People Bermuda can see, room by room. Somebody being in a room is
+    // always safe to act on; a room being empty only when everybody who
+    // lives here is either followed or out, or the light of somebody we
+    // cannot see would be shot out from under them.
+    const people = (this.house.people || []).map((p) => ({ ...p, st: a.state(p.area) }));
+    const whereIs = new Map(people.map((p) => [p.id, p.st ? this._roomByName(p.st.state) : null]));
+    const followed = new Set(people.map((p) => p.person).filter(Boolean));
+    const everyoneKnown =
+      people.length > 0 &&
+      (this.house.persons || []).length > 0 &&
+      (this.house.persons || []).every((id) => followed.has(id) || a.state(id)?.state === 'not_home');
+    // Nobody has been anywhere else for at least as long as each of them has
+    // been where they are now.
+    const settled = people.filter((p) => whereIs.get(p.id)).map((p) => ago(p.st));
+    const peopleEmptyFor = everyoneKnown ? (settled.length ? Math.min(...settled) : Infinity) : 0;
+
     for (const room of this.house.rooms) {
       const info = this.roomInfo.get(room.id);
       if (!info) continue;
       const presence = room.presence.map((p) => a.state(p.entity_id)).filter(Boolean);
-      const occupied = presence.some(isOn);
-      const emptyFor = presence.length ? Math.min(...presence.map(ago)) : 0;
+      const here = people.filter((p) => whereIs.get(p.id) === room.id);
+      const occupied = presence.some(isOn) || here.length > 0;
+      const sensed = presence.length > 0 || everyoneKnown;
+      const emptyFor = Math.min(presence.length ? Math.min(...presence.map(ago)) : Infinity, everyoneKnown ? peopleEmptyFor : Infinity);
 
       // Lights left on in a room nobody has been in for a while.
-      if (presence.length && !occupied && emptyFor >= r.empty_minutes * 60000) {
+      if (sensed && !occupied && emptyFor >= r.empty_minutes * 60000) {
         for (const light of room.lights) {
           if (!isOn(a.state(light.entity_id))) continue;
           const lamp = this.manifest.lamps.find((l) => l.entity === light.entity_id);
@@ -615,11 +633,12 @@ export class HouseLink {
       // Somebody is in the room: one imp, however many sensors agree.
       if (occupied && imps < MAX_IMPS) {
         imps++;
+        const who = here.map((p) => p.name).join(' and ');
         want.set(`imp:${room.id}`, {
           type: 'imp',
           room: room.id,
-          label: `Movement in the ${room.name}`,
-          onKill: () => this.message(`That was only movement in the ${room.name}. It'll be back.`),
+          label: who ? `${who}: in the ${room.name}` : `Movement in the ${room.name}`,
+          onKill: () => this.message(who ? `That was only ${who}. Still in the ${room.name}.` : `That was only movement in the ${room.name}. It'll be back.`),
         });
       }
 

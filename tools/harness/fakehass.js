@@ -177,3 +177,23 @@ export function addChores(hass, { smoke = true } = {}) {
   add('binary_sensor.kitchen_smoke', smoke ? 'on' : 'off', { friendly_name: 'Kitchen Smoke', device_class: 'smoke' }, 'kitchen');
   return hass;
 }
+
+// People Bermuda follows: Alex's phone sends the Companion app's beacon and
+// Bermuda has it in the Kitchen; the hall tablet sends one too, but it is a
+// Fully Kiosk wall screen. withSam adds a second person nobody follows.
+export function addPeople(hass, { withSam = false } = {}) {
+  const old = new Date(Date.now() - 3600e3).toISOString();
+  const add = (entityId, state, attributes, platform) => {
+    hass.states[entityId] = { entity_id: entityId, state, attributes, last_changed: old, last_updated: old };
+    hass.entities[entityId] = { entity_id: entityId, area_id: null, device_id: null, platform };
+  };
+  add('person.alex', 'home', { friendly_name: 'Alex', device_trackers: ['device_tracker.alex_phone'] }, 'person');
+  add('device_tracker.alex_phone', 'home', { friendly_name: 'Alex phone', source_type: 'gps' }, 'mobile_app');
+  add('sensor.alex_phone_ble_transmitter', 'Transmitting', { friendly_name: 'Alex phone BLE transmitter', id: 'aaaa1111-2222-3333-4444-555566667777_100_1' }, 'mobile_app');
+  add('sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', 'Kitchen', { friendly_name: 'Alex phone Area' }, 'bermuda');
+  add('sensor.hall_tablet_ble_transmitter', 'Transmitting', { friendly_name: 'Hall tablet BLE transmitter', id: 'bbbb1111-2222-3333-4444-555566667777_100_1' }, 'mobile_app');
+  add('sensor.bermuda_bbbb1111222233334444555566667777_100_1_area', 'Hallway', { friendly_name: 'Hall tablet Area' }, 'bermuda');
+  add('binary_sensor.hall_tablet_kiosk_mode', 'on', { friendly_name: 'Hall tablet Kiosk mode' }, 'fully_kiosk');
+  if (withSam) add('person.sam', 'home', { friendly_name: 'Sam', device_trackers: ['device_tracker.sam_phone'] }, 'person');
+  return hass;
+}

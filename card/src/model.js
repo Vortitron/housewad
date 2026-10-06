@@ -269,13 +269,44 @@ export function buildHouse(hass, { exclude = [] } = {}) {
       r.lights.length + r.switches.length + r.media.length + r.vacuums.length + r.doors.length + r.cameras.length + r.appliances.length + r.alarms.length + r.levels.length > 0,
   );
 
+  const people = findPeople(hass, exclude);
   return {
     floors: Object.values(floors).map((f) => ({ id: f.floor_id, name: f.name, level: f.level ?? 0 })),
     rooms: houseRooms,
     flies: findFlies(hass, exclude),
-    trackers: findTrackers(hass, exclude),
+    // A phone that is a person is not a keycard lying about.
+    trackers: findTrackers(hass, exclude).filter((t) => !people.some((p) => p.area === t.entity_id)),
+    people,
+    persons: Object.keys(hass.states).filter((id) => id.startsWith('person.')),
     world,
   };
+}
+
+// Phones that send the Home Assistant Companion app's BLE beacon, followed
+// from room to room by Bermuda: people, where they really are. The app tells
+// us the beacon's id (sensor.<phone>_ble_transmitter, attribute "id"), and
+// Bermuda names its room sensor after the same id. A wall tablet (Fully
+// Kiosk on it) is a fixed screen, not somebody walking about.
+export function findPeople(hass, exclude = []) {
+  const ids = Object.keys(hass.states);
+  const persons = ids.filter((id) => id.startsWith('person.')).map((id) => hass.states[id]);
+  const out = [];
+  for (const id of ids.sort()) {
+    const m = id.match(/^sensor\.(.+)_ble_transmitter$/);
+    if (!m || exclude.some((p) => matches(p, id))) continue;
+    const phone = m[1];
+    const beacon = hass.states[id].attributes.id;
+    if (!beacon) continue;
+    if (ids.some((e) => e.endsWith(`.${phone}_kiosk_mode`) || e.endsWith(`.${phone}_kiosk_lock`))) continue;
+    const key = String(beacon).replace(/-/g, '').toLowerCase();
+    const area = ids.find((e) => e.startsWith('sensor.') && e.endsWith('_area') && e.includes(key));
+    if (!area) continue;
+    const person = persons.find((p) => (p.attributes.device_trackers || []).includes(`device_tracker.${phone}`));
+    const tracker = hass.states[`device_tracker.${phone}`];
+    const name = person ? person.attributes.friendly_name || person.entity_id : (tracker && tracker.attributes.friendly_name) || phone.replace(/_/g, ' ');
+    out.push({ id: phone, name, person: person ? person.entity_id : null, area });
+  }
+  return out;
 }
 
 // HouseFly (github.com/Vortitron/HouseFly) flies: a simulated fruit-fly brain

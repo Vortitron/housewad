@@ -50,7 +50,7 @@ Under the game, a status line shows the room you're in, what you're aiming at (a
 | Lost soul | A light left on in a room nobody has been in for 10 minutes | Turns the light off |
 | Zombieman | A plug switched on but only drawing standby power (0.3 to 15 W) | Turns the plug off |
 | Pinky demon | Your robot vacuum. Asleep on its dock; awake while it cleans, in whichever room it reports | Waking it starts a clean. Killing it sends it home |
-| Imp | Motion in a room | Nothing. It was a person. It'll be back |
+| Imp | Motion in a room, or a person whose phone [Bermuda](https://github.com/agittins/bermuda) has in it (named after them) | Nothing. It was a person. It'll be back |
 | Cacodemon | A window open while the heating runs | Nothing. Go and close the window yourself |
 | Revenant | A dishwasher or washing machine that has finished: clean things waiting | Nothing. Go and empty it |
 | Hell knight | An appliance's door left open while it isn't running | Nothing. Go and shut it |
@@ -61,6 +61,8 @@ Under the game, a status line shows the room you're in, what you're aiming at (a
 Appliances are found by what their sensors are called, the way Home Connect, Miele and others name them (`_operation_state`, `_programme_finished`, `_door`, `_salt_nearly_empty`), so no setup is needed.
 
 If killing a monster doesn't fix the problem (the light didn't turn off, say), the monster comes back.
+
+**People, by Bluetooth.** Turn on the Home Assistant Companion app's *BLE Transmitter* on a phone (Settings → Companion app → Manage sensors), and pick its iBeacon in Bermuda's *Select Devices*. The game finds the phone from the beacon id and names it after the person it belongs to. A room with someone in it is occupied. A room only counts as empty, for the wasted-light rule, if everyone in Home Assistant is followed this way or away from home: otherwise a lamp someone is reading by could be shot out from under them. A wall tablet running Fully Kiosk is a screen, not a person.
 
 ### The outside world
 
