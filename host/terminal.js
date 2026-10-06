@@ -15,8 +15,9 @@
 //           {"t":"status","room","aim","last","world"}
 //           {"t":"call","id":n,"domain","service","data"}  a real action
 //           {"t":"error","text"}                     then it exits
-//   --input a file the caller appends JSON lines to, as stdin cannot stay
-//           open: {"t":"key","key":"up"} (a terminal key name or a character),
+//   --input a folder the caller writes small *.json files into, one JSON
+//           message a line, read in name order and deleted, as stdin cannot
+//           stay open: {"t":"key","key":"up"} (a terminal key name or a character),
 //           {"t":"reply","id":n,"error":null}, {"t":"state","entity_id",
 //           "state":{...}}, {"t":"quit"}.
 //
@@ -25,7 +26,7 @@
 //
 // Copyright (C) 2026 Vome. GPL-2.0-or-later, like the card it reuses.
 
-import { openSync, readSync, fstatSync, readFileSync, existsSync, closeSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -199,30 +200,30 @@ function press(engine, name) {
   );
 }
 
-// The input file --------------------------------------------------------------
+// The input folder -------------------------------------------------------------
 
+// Claude Code's process API closes stdin after the start, and a plugin can
+// write whole files but not append, so input arrives as one small file a
+// message (or a few lines) in a folder, read in name order and then deleted.
 function watchInput(onMessage) {
   if (!inputPath) return;
-  let fd = null;
-  let offset = 0;
-  let partial = '';
-  const buffer = Buffer.alloc(65536);
   setInterval(() => {
+    let names;
     try {
-      if (fd === null) {
-        if (!existsSync(inputPath)) return;
-        fd = openSync(inputPath, 'r');
+      names = readdirSync(inputPath).filter((n) => n.endsWith('.json')).sort();
+    } catch (e) {
+      return;
+    }
+    for (const name of names) {
+      const path = join(inputPath, name);
+      let text = '';
+      try {
+        text = readFileSync(path, 'utf8');
+        unlinkSync(path);
+      } catch (e) {
+        continue;
       }
-      const size = fstatSync(fd).size;
-      while (offset < size) {
-        const n = readSync(fd, buffer, 0, Math.min(buffer.length, size - offset), offset);
-        if (n <= 0) break;
-        offset += n;
-        partial += buffer.toString('utf8', 0, n);
-      }
-      const lines = partial.split('\n');
-      partial = lines.pop();
-      for (const line of lines) {
+      for (const line of text.split('\n')) {
         if (!line.trim()) continue;
         try {
           onMessage(JSON.parse(line));
@@ -230,15 +231,8 @@ function watchInput(onMessage) {
           // A torn or foreign line: skip it.
         }
       }
-    } catch (e) {
-      if (fd !== null) {
-        try {
-          closeSync(fd);
-        } catch (_) {}
-      }
-      fd = null;
     }
-  }, 25);
+  }, 20);
 }
 
 // The game --------------------------------------------------------------------

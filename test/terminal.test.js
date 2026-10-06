@@ -20,8 +20,7 @@ test('the terminal host sends its size, then frames of half-block cells', { skip
     floors: values(hass.floors), areas: values(hass.areas), devices: values(hass.devices),
     entities: values(hass.entities), states: values(hass.states), location_name: 'Test House',
   });
-  const input = join(mkdtempSync(join(tmpdir(), 'housewad-')), 'in.jsonl');
-  writeFileSync(input, '');
+  const input = mkdtempSync(join(tmpdir(), 'housewad-'));
   const child = spawn(process.execPath, [join(dist, 'housewad-term.mjs'), '--assets', dist, '--input', input, '--columns', '80', '--rows', '30']);
   child.stdin.end(snapshot);
   const messages = [];
@@ -39,7 +38,7 @@ test('the terminal host sends its size, then frames of half-block cells', { skip
       }
     });
   });
-  writeFileSync(input, '{"t":"quit"}\n');
+  writeFileSync(join(input, '000001.json'), '{"t":"quit"}\n');
   child.kill();
   assert.equal(messages[0].t, 'ready');
   const { columns, rows } = messages[0];
