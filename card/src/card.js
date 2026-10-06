@@ -14,6 +14,8 @@
 //   exit_scene: scene.leaving_home   # the exit switch runs this
 //   cheats: { idcoffee: script.make_coffee }   # type a cheat code, run a thing
 //   floorplan: { rooms: [...], doors: [...], exits: [...] }   # the real layout (see planmap.js)
+//   follow: true           # Follow button: the player goes where your phone is (true: the phone of
+//                          # the person you are logged in as; or a phone id like pixel_8; false: off)
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
@@ -76,6 +78,7 @@ const STYLE = `
   .bar .mode.practice { background: #444; color: #eee; }
   .bar .spacer { flex: 1; }
   .bar button { padding: 4px 10px; font-size: 12px; border-width: 1px; }
+  .bar button.follow.on { background: #ff3b1f; color: #200; }
   .touch { position: absolute; inset: auto 0 17% 0; display: none; justify-content: space-between; padding: 8px; pointer-events: none; }
   .touch.on { display: flex; }
   .pad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; pointer-events: auto; }
@@ -265,6 +268,7 @@ class HouseWadCard extends HTMLElement {
         flies: this.config.flies,
         cheats: Object.fromEntries(Object.entries(this.config.cheats || {}).map(([k, v]) => [k.toLowerCase(), v])),
         exitScene: this.config.exit_scene || null,
+        follow: this.config.follow === undefined ? true : this.config.follow,
         palette: playpal(iwad),
         onConfirm: (pending) => {
           const box = this.shadowRoot.querySelector('.confirm');
@@ -276,6 +280,7 @@ class HouseWadCard extends HTMLElement {
       pending = [];
       this.engine.sound.resume();
       this._bindInput();
+      this._bindFollow();
       this.timers.push(setInterval(() => this.link && this.link.tick(), 250));
       this.timers.push(setInterval(() => this.link && this.link.cameraTick(), 300));
       this.timers.push(setInterval(() => this._showStatus(), 250));
@@ -323,6 +328,7 @@ class HouseWadCard extends HTMLElement {
         <div class="bar">
           <span class="mode ${mode}">${mode === 'real' ? 'LIVE: THIS IS YOUR HOUSE' : 'PRACTICE'}</span>
           <span class="spacer"></span>
+          <button class="follow" hidden aria-pressed="false">Follow my phone</button>
           <button class="full">Full screen</button>
           <button class="quit">Quit</button>
         </div>
@@ -332,6 +338,37 @@ class HouseWadCard extends HTMLElement {
     this.shadowRoot.querySelector('button.full').addEventListener('click', () => {
       const wrap = this.shadowRoot.querySelector('.wrap');
       if (wrap.requestFullscreen) wrap.requestFullscreen();
+    });
+  }
+
+  // Follow: the player goes to the room the viewer's phone is in. Offered
+  // only when there is a phone to follow; remembered per browser.
+  _bindFollow() {
+    const btn = this.shadowRoot.querySelector('button.follow');
+    const target = this.link && this.link.followTarget();
+    if (!btn || !target) return;
+    btn.hidden = false;
+    btn.textContent = `Follow ${target.name}`;
+    const show = (on) => {
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('on', on);
+    };
+    let saved = false;
+    try {
+      saved = localStorage.getItem('housewad-follow') === '1';
+    } catch (e) {
+      // private window: start off
+    }
+    show(this.link.setFollowing(saved));
+    btn.addEventListener('click', () => {
+      const on = this.link.setFollowing(!this.link.following);
+      show(on);
+      try {
+        localStorage.setItem('housewad-follow', on ? '1' : '0');
+      } catch (e) {
+        // not remembered, that's all
+      }
+      this.shadowRoot.querySelector('.screen').focus();
     });
   }
 

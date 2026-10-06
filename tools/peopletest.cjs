@@ -42,6 +42,10 @@ const assert = require('assert');
   const hall = await run('?people=hall');
   assert.equal(hall['imp:hallway'], 'Alex: in the Hallway', 'a listening tablet close by wins');
   assert.ok(!hall['imp:kitchen'] || hall['imp:kitchen'] !== 'Alex: in the Kitchen', 'and Alex is not in two places');
+  // The same reading an hour old is no evidence: Bermuda's kitchen stands.
+  const stale = await run('?people=stalehall');
+  assert.equal(stale['imp:kitchen'], 'Alex: in the Kitchen', 'a stale reading is ignored');
+  assert.ok(!stale['imp:hallway'], 'and does not pin Alex to the hall');
   console.log('people: all passed');
   await b.close();
 })().catch((e) => { console.error(e); process.exit(1); });

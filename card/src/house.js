@@ -49,7 +49,7 @@ const isOn = (st) => !!st && st.state === 'on';
 const ago = (st) => (st && st.last_changed ? Date.now() - new Date(st.last_changed).getTime() : Infinity);
 
 export class HouseLink {
-  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, palette = null, cheats = {}, exitScene = null, onConfirm, log }) {
+  constructor({ engine, manifest, house, actions, rules = {}, confirmUnlock = true, flies = true, palette = null, cheats = {}, exitScene = null, follow = true, onConfirm, log }) {
     this.engine = engine;
     this.m = engine.module;
     this.manifest = manifest;
@@ -61,6 +61,9 @@ export class HouseLink {
     this.fliesOn = flies !== false;
     this.cheats = cheats || {};
     this.exitScene = exitScene;
+    this.follow = follow; // true: the viewer's own phone; a phone or person id: that one; false: never
+    this.following = false;
+    this.followSeen = { room: null, since: 0, done: null };
     this.tally = new Map();
     this.last = null;
     this.worldPrev = new Map(); // world signal -> last state seen
@@ -577,22 +580,7 @@ export class HouseLink {
     // always safe to act on; a room being empty only when everybody who
     // lives here is either followed or out, or the light of somebody we
     // cannot see would be shot out from under them.
-    const people = (this.house.people || []).map((p) => ({ ...p, st: a.state(p.area) }));
-    // A tablet that hears a phone close by knows better than Bermuda's
-    // nearest proxy, especially in a room with no proxy of its own.
-    const listeners = [
-      ...this.manifest.rooms.flatMap((m) => (m.listeners || []).map((entity) => ({ entity, room: m.id, near: m.near || 3 }))),
-      ...(this.house.listeners || []).map((l) => ({ entity: l.entity_id, room: l.room, near: 3 })),
-    ];
-    const heardIn = (p) => {
-      let best = null;
-      for (const l of listeners) {
-        const d = parseFloat(a.state(l.entity)?.attributes?.[p.beacon]);
-        if (d >= 0 && d <= l.near && (!best || d < best.d)) best = { room: l.room, d };
-      }
-      return best && best.room;
-    };
-    const whereIs = new Map(people.map((p) => [p.id, heardIn(p) || (p.st ? this._roomByName(p.st.state) : null)]));
+    const { people, whereIs } = this._peopleRooms();
     const followed = new Set(people.map((p) => p.person).filter(Boolean));
     const everyoneKnown =
       people.length > 0 &&
@@ -798,6 +786,84 @@ export class HouseLink {
       bigInRoom.set(spec.room, n + 1);
     }
     return want;
+  }
+
+  // Where each followed phone is: a listening tablet close by first (a
+  // reading under a minute old), else Bermuda's room.
+  _peopleRooms() {
+    const a = this.actions;
+    const people = (this.house.people || []).map((p) => ({ ...p, st: a.state(p.area) }));
+    const listeners = [
+      ...this.manifest.rooms.flatMap((m) => (m.listeners || []).map((entity) => ({ entity, room: m.id, near: m.near || 3 }))),
+      ...(this.house.listeners || []).map((l) => ({ entity: l.entity_id, room: l.room, near: 3 })),
+    ];
+    const heardIn = (p) => {
+      let best = null;
+      for (const l of listeners) {
+        const st = a.state(l.entity);
+        if (!st || Date.now() - new Date(st.last_updated || st.last_changed || 0).getTime() > 60000) continue;
+        const d = parseFloat(st.attributes?.[p.beacon]);
+        if (d >= 0 && d <= l.near && (!best || d < best.d)) best = { room: l.room, d };
+      }
+      return best && best.room;
+    };
+    const whereIs = new Map(people.map((p) => [p.id, heardIn(p) || (p.st ? this._roomByName(p.st.state) : null)]));
+    return { people, whereIs };
+  }
+
+  // Follow: the phone the game follows, if there is one. With follow: true,
+  // the phone of the person whose Home Assistant login is playing.
+  followTarget() {
+    if (this.follow === false || this.follow == null) return null;
+    const people = this.house.people || [];
+    if (typeof this.follow === 'string') {
+      const f = this.follow.replace(/^device_tracker\./, '');
+      return people.find((p) => p.id === f || p.person === this.follow) || null;
+    }
+    const hass = this._hass();
+    const uid = hass && hass.user && hass.user.id;
+    const me = uid && Object.values(hass.states).find((s) => s.entity_id.startsWith('person.') && s.attributes.user_id === uid);
+    return (me && people.find((p) => p.person === me.entity_id)) || null;
+  }
+
+  setFollowing(on) {
+    const target = this.followTarget();
+    this.following = !!(on && target);
+    this.followSeen = { room: null, since: 0, done: this.currentRoom };
+    if (on && !target) this.message('No phone to follow: link yours to your person in Home Assistant, or set follow in the card.');
+    else if (on) this.message(`Following ${target.name}.`);
+    return this.following;
+  }
+
+  // Bermuda flips between neighbouring rooms: move only once the phone has
+  // stayed in a new room for a few seconds, and only if the player isn't
+  // there already.
+  _followTick() {
+    if (!this.following) return;
+    const target = this.followTarget();
+    if (!target) return;
+    const room = this._peopleRooms().whereIs.get(target.id);
+    const now = Date.now();
+    if (room !== this.followSeen.room) {
+      this.followSeen.room = room;
+      this.followSeen.since = now;
+      return;
+    }
+    if (!room || room === this.followSeen.done || now - this.followSeen.since < (this.rules.follow_settle_s || 6) * 1000) return;
+    this.followSeen.done = room;
+    if (room === this.currentRoom) return;
+    const info = this.roomInfo.get(room);
+    if (!info) return;
+    const taken = [...this.monsters.values()].map((m) => m.spot).filter(Boolean);
+    const free = (s) => taken.every((t) => Math.hypot(t[0] - s[0], t[1] - s[1]) > 64);
+    const mid = info.center || [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
+    const spot = info.spawns.find(free) || mid;
+    // Face into the room (from its middle, any way will do).
+    const angle = spot === mid ? 90 : Math.round((Math.atan2(mid[1] - spot[1], mid[0] - spot[0]) * 180) / Math.PI + 360) % 360;
+    if (this.m._hw_teleport(Math.round(spot[0]), Math.round(spot[1]), angle)) {
+      this.sound('telept');
+      this.message(`${target.name} is in the ${info.name}. So are you.`);
+    }
   }
 
   _refused(entityId, r) {
@@ -1187,6 +1253,7 @@ export class HouseLink {
   tick() {
     if (!this.ready) return;
     this._worldEffects();
+    this._followTick();
     const p = this.player();
     if (!p) return;
     const room = this.manifest.sectorRoom[p.sector];

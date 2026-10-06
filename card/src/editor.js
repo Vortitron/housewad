@@ -3,6 +3,7 @@
 // plan, cheats, rules) is kept as it is.
 
 import { DEFAULT_ALLOW, looksImportant, entityContext } from './actions.js';
+import { findPeople } from './model.js';
 
 const KINDS = [
   { pattern: 'light.*', label: 'Lights', hint: 'shoot a lamp: off; use it: on' },
@@ -74,6 +75,9 @@ export class HouseWadCardEditor extends HTMLElement {
       `<label><input type="checkbox" data-item="${escape(item)}" ${allow.includes(item) ? 'checked' : ''}><span>${escape(label)}${hint ? `<small>${escape(hint)}</small>` : ''}</span></label>`;
     const list = (items, empty) => (items.length ? `<div class="list">${items.map((id) => box(id, name(id), id)).join('')}</div>` : `<div class="none">${empty}</div>`);
     const skill = Number(this._config.skill || 3);
+    const phones = hass ? findPeople(hass) : [];
+    const follow = this._config.follow === undefined ? true : this._config.follow;
+    const followOpts = [[true, 'My phone (the one linked to my person)'], ...phones.map((p) => [p.id, `${p.name}${p.person ? '' : ` (${p.id})`}`]), [false, 'Off']];
     const html = `
       <style>${STYLE}</style>
       <h3>What "Play for real" may control</h3>
@@ -85,6 +89,9 @@ export class HouseWadCardEditor extends HTMLElement {
       <h3>Switches left alone</h3>
       <p>These look like they run something that matters (by name, integration or room), so "Switches and plugs" never reaches them. Tick one only if you really mean it.</p>
       ${list(important, 'None: every switch looks safe to play with.')}
+      <h3>Follow</h3>
+      <p>With Follow on in the game, you are moved to the room your phone is in, as Bermuda sees it.${phones.length ? '' : ' No phones found yet: turn on the Companion app\'s BLE Transmitter and add it in Bermuda.'}</p>
+      <label><span>Follow <select data-follow>${followOpts.map(([v, l]) => `<option value="${escape(JSON.stringify(v))}" ${JSON.stringify(v) === JSON.stringify(follow) ? 'selected' : ''}>${escape(l)}</option>`).join('')}</select></span></label>
       <h3>Difficulty</h3>
       <label><span>Skill <select data-skill>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === skill ? 'selected' : ''}>${n} ${['', "I'm too young to die", 'Hey, not too rough', 'Hurt me plenty', 'Ultra-Violence', 'Nightmare!'][n]}</option>`).join('')}</select></span></label>
       <p>The floor plan and the other options stay in the code editor${this._config.floorplan ? ' (this card has a floor plan)' : ''}.</p>`;
@@ -94,6 +101,11 @@ export class HouseWadCardEditor extends HTMLElement {
     this.shadowRoot.innerHTML = html;
     this.shadowRoot.querySelectorAll('.list').forEach((l, i) => (l.scrollTop = scroll[i] || 0));
     this.shadowRoot.querySelectorAll('input[data-item]').forEach((el) => el.addEventListener('change', () => this._toggle(el.dataset.item, el.checked)));
+    const fol = this.shadowRoot.querySelector('select[data-follow]');
+    fol.addEventListener('change', () => {
+      this._config = { ...this._config, follow: JSON.parse(fol.value) };
+      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
+    });
     const sel = this.shadowRoot.querySelector('select[data-skill]');
     sel.addEventListener('change', () => {
       this._config = { ...this._config, skill: Number(sel.value) };

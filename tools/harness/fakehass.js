@@ -103,7 +103,7 @@ export function makeFakeHass(onUpdate) {
     devices,
     areas,
     floors,
-    user: { name: 'Test', is_admin: true },
+    user: { id: 'user-test', name: 'Test', is_admin: true },
     config: { location_name: 'Test House' },
     calls,
     set,
@@ -187,7 +187,8 @@ export function addPeople(hass, { withSam = false, nearHall = false } = {}) {
     hass.states[entityId] = { entity_id: entityId, state, attributes, last_changed: old, last_updated: old };
     hass.entities[entityId] = { entity_id: entityId, area_id: null, device_id: null, platform };
   };
-  add('person.alex', 'home', { friendly_name: 'Alex', device_trackers: ['device_tracker.alex_phone'] }, 'person');
+  // Alex is the one logged in (hass.user), so Follow follows Alex's phone.
+  add('person.alex', 'home', { friendly_name: 'Alex', device_trackers: ['device_tracker.alex_phone'], user_id: 'user-test' }, 'person');
   add('device_tracker.alex_phone', 'home', { friendly_name: 'Alex phone', source_type: 'gps' }, 'mobile_app');
   add('sensor.alex_phone_ble_transmitter', 'Transmitting', { friendly_name: 'Alex phone BLE transmitter', id: 'aaaa1111-2222-3333-4444-555566667777_100_1' }, 'mobile_app');
   add('sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', 'Kitchen', { friendly_name: 'Alex phone Area' }, 'bermuda');
@@ -197,7 +198,10 @@ export function addPeople(hass, { withSam = false, nearHall = false } = {}) {
   if (withSam) add('person.sam', 'home', { friendly_name: 'Sam', device_trackers: ['device_tracker.sam_phone'] }, 'person');
   // The hall tablet's Beacon monitor hears Alex's phone 1.5 m away: Alex is
   // in the hall, whatever Bermuda's nearest proxy says.
-  add('sensor.hall_tablet_beacon_monitor', 'Monitoring', { friendly_name: 'Hall tablet Beacon monitor', ...(nearHall ? { 'aaaa1111-2222-3333-4444-555566667777_100_1': 1.5 } : { 'aaaa1111-2222-3333-4444-555566667777_100_1': 9.2 }) }, 'mobile_app');
+  // nearHall: 'fresh' (a reading just now) or 'stale' (an hour old, which
+  // says nothing about where Alex is now).
+  add('sensor.hall_tablet_beacon_monitor', 'Monitoring', { friendly_name: 'Hall tablet Beacon monitor', 'aaaa1111-2222-3333-4444-555566667777_100_1': nearHall ? 1.5 : 9.2 }, 'mobile_app');
   hass.entities['sensor.hall_tablet_beacon_monitor'].area_id = 'hallway';
+  if (nearHall === 'fresh') hass.states['sensor.hall_tablet_beacon_monitor'].last_updated = new Date().toISOString();
   return hass;
 }

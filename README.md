@@ -64,7 +64,9 @@ If killing a monster doesn't fix the problem (the light didn't turn off, say), t
 
 **People, by Bluetooth.** Turn on the Home Assistant Companion app's *BLE Transmitter* on a phone (Settings → Companion app → Manage sensors), and pick its iBeacon in Bermuda's *Select Devices*. The game finds the phone from the beacon id and names it after the person it belongs to. A room with someone in it is occupied. A room only counts as empty, for the wasted-light rule, if everyone in Home Assistant is followed this way or away from home: otherwise a lamp someone is reading by could be shot out from under them. A wall tablet running Fully Kiosk is a screen, not a person.
 
-A tablet can be a listener for a room with no Bluetooth proxy. The Companion app's *Beacon monitor* reports how far away each beacon it hears is, and a phone within 3 m of the tablet is in the tablet's room, whatever Bermuda's nearest proxy says. Put the tablet's device in an area, or name it in a plan room: `listeners: [sensor.hall_tablet_beacon_monitor]`, `near: 3`.
+A tablet can be a listener for a room with no Bluetooth proxy. The Companion app's *Beacon monitor* reports how far away each beacon it hears is, and a phone within 3 m of the tablet is in the tablet's room, whatever Bermuda's nearest proxy says. Put the tablet's device in an area, or name it in a plan room: `listeners: [sensor.hall_tablet_beacon_monitor]`, `near: 3`. A reading more than a minute old is ignored (the app does not update it often), so a tablet never pins anyone to a room they have left.
+
+**Follow.** With a phone followed, the game bar has a *Follow* button: on, you are taken to the room your phone is in, once it has stayed there a few seconds (Bermuda flips between neighbouring rooms, and a flip is not a move). It follows the phone of the person you are logged in as; set `follow: pixel_8` (a phone) or `follow: false` in the card, or choose in its settings.
 
 ### The outside world
 
