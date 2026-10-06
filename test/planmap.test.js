@@ -119,3 +119,16 @@ test("an outside area's camera that the yard has no wall for goes inside, by its
   assert.ok(Object.values(manifest.lines).some((r) => r.kind === 'media' && r.entity === 'media_player.porch'), 'and so does the media player');
   assert.ok(Object.values(manifest.lines).some((r) => r.kind === 'exit'), 'the exit switch keeps its place');
 });
+
+test('a narrow room still gets its props and somewhere for a demon to stand', () => {
+  const narrow = {
+    ...plan,
+    rooms: [...plan.rooms, { id: 'spooky', name: 'Spooky toilet', height: 2, rects: [[10, 0, 13.6, 1.25]], things: ['barrel', 'barrel', 'barrel', 'candle'] }],
+    doors: [...plan.doors, { rooms: ['kitchen', 'spooky'], at: [[10, 0.2], [10, 1.05]] }],
+  };
+  const { manifest, map } = generateFromPlan(narrow, house);
+  assert.equal(map.things.filter((t) => t.type === 2035).length, 3, 'three barrels');
+  assert.equal(map.things.filter((t) => t.type === 34).length, 1, 'and a candle');
+  const room = manifest.rooms.find((r) => r.name === 'Spooky toilet');
+  assert.ok(room.spawns.length > 0 || room.center, 'a spot, or at least its middle');
+});

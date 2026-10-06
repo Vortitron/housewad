@@ -730,7 +730,7 @@ export class HouseLink {
 
     // Rooms that are spooky in real life are spooky in Doom.
     for (const info of this.manifest.rooms) {
-      if (info.outdoor || !SPOOKY.test(info.name || '') || !info.spawns.length) continue;
+      if (info.outdoor || !SPOOKY.test(info.name || '')) continue;
       want.set(`spooky:${info.id}`, {
         type: 'spectre',
         room: info.id,
@@ -797,7 +797,8 @@ export class HouseLink {
     const taken = new Set([...this.monsters.entries()].filter(([k]) => k !== key).map(([, m]) => m.spot && m.spot.join(',')));
     const p = this.player();
     const spots = info.spawns.filter((s) => !taken.has(s.join(',')));
-    if (!spots.length) return info.spawns[0] || null;
+    // A small room full of doors may have no free spot: its middle will do.
+    if (!spots.length) return info.spawns[0] || info.center || [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
     const far = p ? spots.filter((s) => Math.hypot(s[0] - p.x, s[1] - p.y) > 160) : spots;
     const pool = far.length ? far : spots;
     // Stable choice per key so a monster comes back where it was.

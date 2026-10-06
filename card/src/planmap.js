@@ -367,8 +367,12 @@ export function generateFromPlan(plan, house) {
     if (/bath|shower|dusch|badrum|toilet|wc/i.test(n) && info.spawns.length) b.addThing(...spot(), THING.MEDIKIT);
     if (/bed|sov|quiet/i.test(n) && info.spawns.length) b.addThing(...spot(), THING.GREEN_ARMOR);
     // Props the plan asks for: barrels where the wine ferments, candles.
-    for (const prop of (info.plan && info.plan.things) || []) {
-      if (PROPS[prop] && info.spawns.length) b.addThing(...spot(), PROPS[prop]);
+    // They are small and stand against the walls, so they get spots of
+    // their own and leave the middle of the room to the monsters.
+    const props = ((info.plan && info.plan.things) || []).filter((p) => PROPS[p]);
+    if (props.length) {
+      const spots = propSpots(info, touch);
+      props.forEach((p, i) => spots.length && b.addThing(...spots[i % spots.length], PROPS[p]));
     }
   }
 
@@ -563,14 +567,29 @@ function wallSlots(info, touch) {
 
 function freeSpots(info, doors, touch) {
   const spots = [];
-  for (const r of info.rects) {
-    for (let x = r.x1 + 48; x <= r.x2 - 48; x += 64)
-      for (let y = r.y1 + 48; y <= r.y2 - 48; y += 64) {
-        if (touch.some((t) => Math.hypot(x - (t.x1 + t.x2) / 2, y - (t.y1 + t.y2) / 2) < 96)) continue;
-        spots.push([x, y]);
-      }
-  }
+  const lines = (lo, hi) => {
+    // 48 in from each wall; a room narrower than that gets its middle line.
+    if (hi - lo < 96) return [Math.round((lo + hi) / 2)];
+    const out = [];
+    for (let v = lo + 48; v <= hi - 48; v += 64) out.push(v);
+    return out;
+  };
+  const nearDoor = (x, y, d) => touch.some((t) => Math.hypot(x - (t.x1 + t.x2) / 2, y - (t.y1 + t.y2) / 2) < d);
+  for (const r of info.rects) for (const x of lines(r.x1, r.x2)) for (const y of lines(r.y1, r.y2)) if (!nearDoor(x, y, 96)) spots.push([x, y]);
+  // A small room that is all doors: closer to them, rather than nowhere.
+  if (!spots.length) for (const r of info.rects) for (const x of lines(r.x1, r.x2)) for (const y of lines(r.y1, r.y2)) if (!nearDoor(x, y, 40)) spots.push([x, y]);
   return spots;
+}
+
+// Along the walls, 24 in, every 40 units, away from doors: for barrels and candles.
+function propSpots(info, touch) {
+  const spots = [];
+  const nearDoor = (x, y) => touch.some((t) => x > t.x1 - 40 && x < t.x2 + 40 && y > t.y1 - 40 && y < t.y2 + 40);
+  for (const r of info.rects) {
+    for (let x = r.x1 + 24; x <= r.x2 - 24; x += 40) for (const y of [r.y1 + 24, r.y2 - 24]) if (!nearDoor(x, y)) spots.push([x, y]);
+  }
+  // Spread them out: every other spot first.
+  return [...spots.filter((_, i) => i % 2 === 0), ...spots.filter((_, i) => i % 2 === 1)];
 }
 
 function placeLamps(manifest, hr, info) {
