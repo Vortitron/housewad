@@ -50,6 +50,12 @@ const AREA = 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area';
   await page.waitForTimeout(7500);
   assert.equal(await room(), 'living_room', 'followed to the living room');
 
+  // Bermuda loses the phone for a few seconds: Alex is still in the living room.
+  await moveAlex('unknown');
+  await page.waitForTimeout(3000);
+  assert.equal(await page.evaluate(() => window.card.link.monsters.has('imp:living_room')), true, 'no blinking out on a short unknown');
+  await moveAlex('Living Room');
+
   // Off again, Alex moves on: the player doesn't.
   await card.evaluate((el) => el.shadowRoot.querySelector('button.follow').click());
   await moveAlex('Office');

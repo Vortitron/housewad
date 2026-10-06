@@ -807,7 +807,19 @@ export class HouseLink {
       }
       return best && best.room;
     };
-    const whereIs = new Map(people.map((p) => [p.id, heardIn(p) || (p.st ? this._roomByName(p.st.state) : null)]));
+    // Bermuda drops a phone to "unknown" for a few seconds now and then: keep
+    // the last room through a short gap rather than blinking out.
+    const hold = (this.rules.presence_hold_s ?? 90) * 1000;
+    this.lastRoom = this.lastRoom || new Map();
+    const whereIs = new Map(
+      people.map((p) => {
+        const room = heardIn(p) || (p.st ? this._roomByName(p.st.state) : null);
+        const gone = p.st && ['not_home', 'away'].includes(p.st.state);
+        if (room) this.lastRoom.set(p.id, { room, at: Date.now() });
+        const last = this.lastRoom.get(p.id);
+        return [p.id, room || (!gone && last && Date.now() - last.at < hold ? last.room : null)];
+      }),
+    );
     return { people, whereIs };
   }
 
