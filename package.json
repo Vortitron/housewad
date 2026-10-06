@@ -9,8 +9,9 @@
     "build:card": "esbuild card/src/card.js --bundle --format=esm --target=es2020 --minify --legal-comments=inline --outfile=dist/housewad-card.js",
     "build:engine": "tools/build-engine.sh && tools/build-nodebuilder.sh",
     "build:iwad": "node tools/build-iwad.mjs",
-    "build": "npm run build:engine && npm run build:iwad && npm run build:card",
-    "test": "node --test test/*.test.js"
+    "build": "npm run build:engine && npm run build:iwad && npm run build:card && npm run build:term",
+    "test": "node --test test/*.test.js",
+    "build:term": "esbuild host/terminal.js --bundle --platform=node --format=esm --target=node18 --minify --legal-comments=inline --outfile=dist/housewad-term.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
