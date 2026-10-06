@@ -1,0 +1,13 @@
+{
+ "rooms": [
+  { "id": "hall", "area": "hallway", "height": 2.4, "rects": [[0, 0, 5, 3]] },
+  { "id": "kitchen", "area": "kitchen", "height": 2.4, "rects": [[5, 0, 11, 6]] },
+  { "id": "spooky", "name": "Spooky toilet", "height": 2.2, "rects": [[0, 3, 5, 6]], "things": ["barrel", "barrel", "barrel", "candle"] }
+ ],
+ "doors": [
+  { "rooms": ["hall", "kitchen"], "at": [[5, 0.8], [5, 2.2]] },
+  { "rooms": ["hall", "spooky"], "at": [[1, 3], [2.2, 3]] }
+ ],
+ "exits": [{ "room": "hall", "name": "Front door", "at": [[0, 1], [0, 2]] }],
+ "start": { "room": "hall", "at": [2.5, 1.5] }
+}

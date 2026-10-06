@@ -13,11 +13,16 @@ const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4, COUNT: 8 };
 
 const MONSTER_SLOT_BASE = 2000;
+// Appliance states that mean "busy, leave it", and event sensors that mean "it happened".
+const RUNNING = ['run', 'running', 'in_use', 'delayedstart', 'delayed_start', 'pause'];
+const RAISED = ['on', 'present', 'true', 'detected'];
+const SPOOKY = /spooky|haunted|ghost|spök/i;
 const MAX_MONSTERS = 14;
 const MAX_IMPS = 6;
 
 export const DEFAULT_RULES = {
   empty_minutes: 10, // a light on in a room nobody has been in for this long is wasted
+  low_level: 20, // percent: coffee beans, salt or pellets below this are running out
   standby_min: 0.3, // watts: below this a switched-on plug is really idle
   standby_max: 15, // watts: above this it is doing something useful
 };
@@ -77,7 +82,7 @@ export class HouseLink {
     this.nextSlot = MONSTER_SLOT_BASE;
     this.currentRoom = null;
     this.type = {};
-    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron', 'redcard', 'bluecard', 'yellowcard', 'redskull', 'blueskull', 'yellowskull', 'backpack', 'baron', 'rocketlauncher', 'rockets'])
+    for (const name of ['lamp', 'zombieman', 'imp', 'demon', 'lostsoul', 'cacodemon', 'arachnotron', 'redcard', 'bluecard', 'yellowcard', 'redskull', 'blueskull', 'yellowskull', 'backpack', 'baron', 'rocketlauncher', 'rockets', 'mancubus', 'revenant', 'hellknight', 'spectre', 'cyberdemon'])
       this.type[name] = this.m.ccall('hw_type', 'number', ['string'], [name]);
 
     this.roomInfo = new Map(manifest.rooms.map((r) => [r.id, r]));
@@ -653,6 +658,95 @@ export class HouseLink {
           onKill: () => this._killAction(v.entity_id, 'return_to_base', 'sent home'),
         });
       }
+
+      // Appliances: chores the house can see but cannot do for you.
+      for (const ap of room.appliances || []) {
+        const st = ap.state ? a.state(ap.state)?.state : null;
+        const running = RUNNING.includes(String(st).toLowerCase());
+        const finished = String(st).toLowerCase() === 'finished' || (ap.finished && RAISED.includes(String(a.state(ap.finished)?.state).toLowerCase()));
+        if (finished && !running) {
+          want.set(`done:${ap.id}`, {
+            type: 'revenant',
+            problem: true,
+            room: room.id,
+            label: `${ap.name} has finished. Go and empty it`,
+            respawn: 60000,
+            onKill: () => this.message(`That won't empty the ${ap.name.toLowerCase()}.`),
+          });
+        }
+        if (ap.door && !running && String(a.state(ap.door)?.state).toLowerCase() === 'open') {
+          want.set(`door:${ap.id}`, {
+            type: 'hellknight',
+            problem: true,
+            room: room.id,
+            label: `${ap.name} door left open`,
+            respawn: 60000,
+            onKill: () => this.message(`Now go and shut the ${ap.name.toLowerCase()}.`),
+          });
+        }
+        for (const id of ap.low) {
+          if (!RAISED.includes(String(a.state(id)?.state).toLowerCase())) continue;
+          want.set(`hungry:${id}`, {
+            type: 'mancubus',
+            big: true,
+            problem: true,
+            room: room.id,
+            label: `Hungry: ${friendlyName(hass, id)}`,
+            respawn: 60000,
+            onKill: () => this.message(`It'll be hungry again until you refill it.`),
+          });
+        }
+      }
+
+      // Coffee beans, salt, pellets, toner: a level that is running out.
+      for (const lv of room.levels || []) {
+        const v = parseFloat(a.state(lv.entity_id)?.state);
+        if (!(v < r.low_level)) continue;
+        want.set(`hungry:${lv.entity_id}`, {
+          type: 'mancubus',
+          big: true,
+          problem: true,
+          room: room.id,
+          label: `Running low: ${friendlyName(hass, lv.entity_id)} (${Math.round(v)}%)`,
+          respawn: 60000,
+          onKill: () => this.message(`It'll be hungry again until you refill it.`),
+        });
+      }
+
+      // Smoke or gas: the biggest thing in Doom, where it really is.
+      for (const al of room.alarms || []) {
+        if (!isOn(a.state(al.entity_id))) continue;
+        want.set(`alarm:${al.entity_id}`, {
+          type: 'cyberdemon',
+          big: true,
+          problem: true,
+          room: room.id,
+          label: `${friendlyName(hass, al.entity_id)}! In the ${room.name}`,
+          respawn: 15000,
+          onKill: () => this.message(`That didn't put it out. Go and look in the ${room.name}.`),
+        });
+      }
+    }
+
+    // Rooms that are spooky in real life are spooky in Doom.
+    for (const info of this.manifest.rooms) {
+      if (info.outdoor || !SPOOKY.test(info.name || '') || !info.spawns.length) continue;
+      want.set(`spooky:${info.id}`, {
+        type: 'spectre',
+        room: info.id,
+        label: `Something moves in the ${info.name}`,
+        respawn: 60000,
+        onKill: () => this.message('It was only the wind.'),
+      });
+    }
+
+    // Big demons (and flies on legs) need the middle of a room each.
+    const bigInRoom = new Map();
+    for (const spec of want.values()) {
+      if (!spec.big && spec.type !== 'arachnotron') continue;
+      const n = bigInRoom.get(spec.room) || 0;
+      if (spec.big) spec.slotInRoom = n;
+      bigInRoom.set(spec.room, n + 1);
     }
     return want;
   }
@@ -686,11 +780,13 @@ export class HouseLink {
   _spotFor(spec, key) {
     const info = this.roomInfo.get(spec.room);
     if (!info) return null;
-    if (spec.type === 'arachnotron') {
+    if (spec.type === 'arachnotron' || spec.big) {
       // 128 units across: only the middle of a room is clear of the walls.
       const off = [[0, 0], [-100, 0], [100, 0], [0, -100], [0, 100]][(spec.slotInRoom || 0) % 5];
       const c = info.center || [(info.bbox.x1 + info.bbox.x2) / 2, (info.bbox.y1 + info.bbox.y2) / 2];
-      return [Math.round(c[0]) + off[0], Math.round(c[1]) + off[1]];
+      // Never past the room's walls, however small the room.
+      const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+      return [Math.round(clamp(c[0] + off[0], info.bbox.x1 + 48, info.bbox.x2 - 48)), Math.round(clamp(c[1] + off[1], info.bbox.y1 + 48, info.bbox.y2 - 48))];
     }
     if (spec.near) {
       const cx = (info.bbox.x1 + info.bbox.x2) / 2;

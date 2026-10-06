@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildHouse, matches, UNASSIGNED } from '../card/src/model.js';
-import { makeFakeHass } from '../tools/harness/fakehass.js';
+import { makeFakeHass, addChores } from '../tools/harness/fakehass.js';
 
 test('areas become rooms, floors carry over', () => {
   const house = buildHouse(makeFakeHass());
@@ -100,4 +100,21 @@ test('watched VomeSync switches are the outside world; owned ones are left out',
   assert.equal(worldKind('Ketelbrug open'), 'transport');
   assert.equal(worldKind('Full moon'), 'event');
   assert.equal(house.world.find((w) => w.entity_id === 'sensor.cloudflare_is_up_status').name, 'Cloudflare is up');
+});
+
+test('appliances, alarms and running-out levels are found by what their sensors say', () => {
+  const kitchen = buildHouse(addChores(makeFakeHass())).rooms.find((r) => r.id === 'kitchen');
+  assert.deepEqual(kitchen.appliances, [{
+    id: 'dev_dishwasher',
+    name: 'Dishwasher',
+    state: 'sensor.dishwasher_operation_state',
+    finished: 'sensor.dishwasher_programme_finished',
+    door: 'sensor.dishwasher_door',
+    low: ['sensor.dishwasher_rinse_aid_nearly_empty', 'sensor.dishwasher_salt_nearly_empty'],
+  }]);
+  assert.deepEqual(kitchen.alarms.map((a) => a.entity_id), ['binary_sensor.kitchen_smoke']);
+  assert.deepEqual(kitchen.levels.map((l) => l.entity_id), ['sensor.espresso_bean_level'], 'beans yes, humidity no');
+  // A door sensor on its own is a door, not an appliance.
+  const plain = buildHouse(makeFakeHass()).rooms.flatMap((r) => r.appliances);
+  assert.deepEqual(plain, []);
 });

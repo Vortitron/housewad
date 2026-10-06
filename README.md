@@ -52,6 +52,13 @@ Under the game, a status line shows the room you're in, what you're aiming at (a
 | Pinky demon | Your robot vacuum. Asleep on its dock; awake while it cleans, in whichever room it reports | Waking it starts a clean. Killing it sends it home |
 | Imp | Motion in a room | Nothing. It was a person. It'll be back |
 | Cacodemon | A window open while the heating runs | Nothing. Go and close the window yourself |
+| Revenant | A dishwasher or washing machine that has finished: clean things waiting | Nothing. Go and empty it |
+| Hell knight | An appliance's door left open while it isn't running | Nothing. Go and shut it |
+| Mancubus | Something hungry: dishwasher salt or rinse aid nearly empty, coffee beans, pellets, toner or ink below 20% | Nothing until you refill it |
+| Cyberdemon | A smoke, gas or carbon monoxide alarm going off, in the room it's in | Nothing. Go and look |
+| Spectre | A room called spooky or haunted (it's dim in there too) | It was only the wind |
+
+Appliances are found by what their sensors are called, the way Home Connect, Miele and others name them (`_operation_state`, `_programme_finished`, `_door`, `_salt_nearly_empty`), so no setup is needed.
 
 If killing a monster doesn't fix the problem (the light didn't turn off, say), the monster comes back.
 
@@ -177,6 +184,8 @@ More than one storey: Doom can't put a room above another, so each other level s
       from: { room: living, rect: [14.6, 3.6, 15.6, 4.9], enter: s }   # entered from the room to its south
       to:   { room: loft,   rect: [14.6, 3.5, 15.6, 4.9], enter: n }
   anywhere: [residence]    # areas that mean the whole house: their things are spread over the rooms
+  # A room can ask for props: barrel, candle, candelabra, lamp, skulls, blood.
+  #   - { id: spooky, name: Spooky toilet, rects: [...], things: [barrel, barrel, candle] }
 ```
 
 The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. Sweet Home 3D import is on the way.

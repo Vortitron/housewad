@@ -43,6 +43,8 @@ const GAP = 4; // half a wall: rooms are inset this far, so walls are solid
 const YARD_DEPTH = 3; // metres of outside beyond a door
 const SLOT = 96;
 const TELEPORT_DEST = 14; // Doom's teleport destination thing
+// Things a plan room can ask for by name ("things": ["barrel", "candle"]).
+const PROPS = { barrel: 2035, candle: 34, candelabra: 35, lamp: 2028, skulls: 29, blood: 24 };
 const WR_TELEPORT = 97; // walk over, repeatable, front side only
 const STAIR_TAG = 100; // stair tags start here, clear of the exit doors'
 
@@ -101,7 +103,7 @@ export function generateFromPlan(plan, house) {
       floorTex: theme.floor,
       ceilTex: outdoor ? 'F_SKY1' : theme.ceil,
       wall: theme.wall,
-      light: outdoor ? 200 : 160,
+      light: outdoor ? 200 : theme.light || 160,
       priority: 2,
     });
     const rects = pr.rects.map((r) => rectU(r, lv)).map((r) => ({ x1: r.x1 + GAP, x2: r.x2 - GAP, y1: r.y1 + GAP, y2: r.y2 - GAP }));
@@ -120,6 +122,7 @@ export function generateFromPlan(plan, house) {
       fixtures: [],
       house: hr,
       height: heightU,
+      plan: pr,
     };
     roomOf.set(pr.id, info);
     manifest.sectorRoom[sector] = { id, name: info.name, outdoor };
@@ -363,6 +366,10 @@ export function generateFromPlan(plan, house) {
     if (/kitchen|kök/i.test(n) && info.spawns.length) b.addThing(...spot(), THING.CHAINSAW);
     if (/bath|shower|dusch|badrum|toilet|wc/i.test(n) && info.spawns.length) b.addThing(...spot(), THING.MEDIKIT);
     if (/bed|sov|quiet/i.test(n) && info.spawns.length) b.addThing(...spot(), THING.GREEN_ARMOR);
+    // Props the plan asks for: barrels where the wine ferments, candles.
+    for (const prop of (info.plan && info.plan.things) || []) {
+      if (PROPS[prop] && info.spawns.length) b.addThing(...spot(), PROPS[prop]);
+    }
   }
 
   for (const info of roomOf.values()) {

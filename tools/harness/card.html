@@ -6,7 +6,7 @@
 <script>/* ?panel: full width under a 56px header, like a Lovelace panel view */ if (/[?&]panel\b/.test(location.search)) addEventListener('DOMContentLoaded', () => document.body.classList.add('panel'));</script>
 <housewad-card></housewad-card>
 <script type="module">
-import { makeFakeHass } from './fakehass.js';
+import { makeFakeHass, addChores } from './fakehass.js';
 await import('../../dist/housewad-card.js');
 const card = document.querySelector('housewad-card');
 const params = new URLSearchParams(location.search);
@@ -15,6 +15,8 @@ const allow = (params.get('allow') || 'light.*,switch.*,media_player.*,vacuum.*,
 const floorplan = params.get('plan') ? await (await fetch(params.get('plan'))).json() : undefined;
 card.setConfig({ allow, assets_url: '/dist/', rules: { empty_minutes: 10 }, cheats: { IDCOFFEE: 'switch.kettle' }, exit_scene: 'switch.towel_rail', floorplan });
 window.hass = makeFakeHass((h) => { card.hass = h; window.hass = h; });
+// ?chores: a dishwasher with chores waiting, beans running out, smoke.
+if (params.has('chores')) addChores(window.hass);
 card.hass = window.hass;
 window.card = card;
 window.booted = true;

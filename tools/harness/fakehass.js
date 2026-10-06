@@ -155,3 +155,25 @@ export function makeFakeHass(onUpdate) {
   };
   return hass;
 }
+
+// Chores and alarms, as a real house reports them (names as Home Connect
+// gives them): a dishwasher that has finished with its door open and the salt
+// running out, coffee beans at 12%, and the kitchen smoke alarm. Added to an
+// existing fake hass on request, so other tests keep their quiet house.
+export function addChores(hass, { smoke = true } = {}) {
+  const old = new Date(Date.now() - 3600e3).toISOString();
+  const add = (entityId, state, attributes, areaId, deviceId) => {
+    hass.states[entityId] = { entity_id: entityId, state, attributes, last_changed: old, last_updated: old };
+    hass.entities[entityId] = { entity_id: entityId, area_id: deviceId ? null : areaId, device_id: deviceId || null };
+    if (deviceId && !hass.devices[deviceId]) hass.devices[deviceId] = { id: deviceId, area_id: areaId, name: 'Dishwasher' };
+  };
+  add('sensor.dishwasher_operation_state', 'finished', { friendly_name: 'Dishwasher Operation state', device_class: 'enum' }, 'kitchen', 'dev_dishwasher');
+  add('sensor.dishwasher_programme_finished', 'present', { friendly_name: 'Dishwasher Programme finished', device_class: 'enum' }, 'kitchen', 'dev_dishwasher');
+  add('sensor.dishwasher_door', 'open', { friendly_name: 'Dishwasher Door', device_class: 'enum' }, 'kitchen', 'dev_dishwasher');
+  add('sensor.dishwasher_salt_nearly_empty', 'present', { friendly_name: 'Dishwasher Salt nearly empty', device_class: 'enum' }, 'kitchen', 'dev_dishwasher');
+  add('sensor.dishwasher_rinse_aid_nearly_empty', 'off', { friendly_name: 'Dishwasher Rinse aid nearly empty', device_class: 'enum' }, 'kitchen', 'dev_dishwasher');
+  add('sensor.espresso_bean_level', '12', { friendly_name: 'Espresso Bean Level', unit_of_measurement: '%' }, 'kitchen');
+  add('sensor.kitchen_humidity', '12', { friendly_name: 'Kitchen Humidity', unit_of_measurement: '%', device_class: 'humidity' }, 'kitchen');
+  add('binary_sensor.kitchen_smoke', smoke ? 'on' : 'off', { friendly_name: 'Kitchen Smoke', device_class: 'smoke' }, 'kitchen');
+  return hass;
+}

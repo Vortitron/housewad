@@ -408,6 +408,14 @@ int hw_type(const char *name)
         {"baron", MT_BRUISER},
         {"rocketlauncher", MT_MISC27},
         {"rockets", MT_MISC19},
+        // Chores, alarms and spooky rooms (house.js wantedMonsters).
+        {"mancubus", MT_FATSO},
+        {"revenant", MT_UNDEAD},
+        {"hellknight", MT_KNIGHT},
+        {"spectre", MT_SHADOWS},
+        {"cyberdemon", MT_CYBORG},
+        {"chaingunner", MT_CHAINGUY},
+        {"barrel", MT_BARREL},
     };
     unsigned i;
 

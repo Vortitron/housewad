@@ -9,6 +9,17 @@ export const UNASSIGNED = '_unassigned';
 const DOOR_SENSOR_CLASSES = ['door', 'garage_door'];
 const DOOR_COVER_CLASSES = ['door', 'garage', 'gate'];
 const PRESENCE_CLASSES = ['motion', 'occupancy', 'presence'];
+const ALARM_CLASSES = ['smoke', 'gas', 'carbon_monoxide'];
+// Appliance sensors by what they say (Home Connect, Miele and the like name
+// them this way): its state, a finished programme, its door, a refill.
+const APPLIANCE_PARTS = [
+  ['state', /_(operation_state|operating_state)$/],
+  ['finished', /_(programme|program)_finished$/],
+  ['door', /_door$/],
+  ['low', /_(nearly_empty|refill|low)$/],
+];
+// A percentage that runs out: coffee beans, salt, pellets, toner, ink.
+const LEVEL_NAME = /\b(beans?|coffee|salt|pellets?|toner|ink|food|feed)\b/i;
 const NOT_HOUSE_PLATFORMS = ['hassio', 'hacs'];
 
 export function domainOf(entityId) {
@@ -24,6 +35,8 @@ export function matches(pattern, entityId) {
 function escapeRe(s) {
   return s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 }
+
+const objectIdOf = (entityId) => entityId.split('.')[1];
 
 export function friendlyName(hass, entityId) {
   const st = hass.states[entityId];
@@ -69,6 +82,9 @@ export function buildHouse(hass, { exclude = [] } = {}) {
       climates: [],
       cameras: [],
       doors: [],
+      appliances: [],
+      alarms: [],
+      levels: [],
     });
   }
   const roomFor = (entityId) => {
@@ -88,6 +104,9 @@ export function buildHouse(hass, { exclude = [] } = {}) {
         climates: [],
         cameras: [],
         doors: [],
+        appliances: [],
+        alarms: [],
+        levels: [],
       });
     }
     return rooms.get(UNASSIGNED);
@@ -144,14 +163,42 @@ export function buildHouse(hass, { exclude = [] } = {}) {
         if (DOOR_SENSOR_CLASSES.includes(dc)) doorSensors.push(item);
         else if (PRESENCE_CLASSES.includes(dc)) roomFor(entityId).presence.push(item);
         else if (dc === 'window') roomFor(entityId).windows.push(item);
+        else if (ALARM_CLASSES.includes(dc)) roomFor(entityId).alarms.push(item);
         break;
       case 'sensor':
         if (dc === 'power' && deviceOf(entityId) && !powerByDevice.has(deviceOf(entityId)))
           powerByDevice.set(deviceOf(entityId), entityId);
+        else if (st.attributes.unit_of_measurement === '%' && dc !== 'battery' && dc !== 'humidity' && LEVEL_NAME.test(`${objectIdOf(entityId).replace(/_/g, ' ')} ${item.name}`))
+          roomFor(entityId).levels.push(item);
         break;
       default:
         break;
     }
+  }
+
+  // Appliances: sensors grouped by device (or by name when there is none).
+  // Something with a state or a finished programme is an appliance; its door
+  // and refill warnings join it.
+  const parts = new Map();
+  for (const entityId of Object.keys(hass.states).sort()) {
+    if (!entityId.startsWith('sensor.') && !entityId.startsWith('binary_sensor.')) continue;
+    if (!visible(entityId)) continue;
+    for (const [part, re] of APPLIANCE_PARTS) {
+      const m = objectIdOf(entityId).match(re);
+      if (!m) continue;
+      const key = deviceOf(entityId) || objectIdOf(entityId).slice(0, m.index);
+      if (!parts.has(key)) parts.set(key, { state: null, finished: null, door: null, low: [], first: entityId, prefix: objectIdOf(entityId).slice(0, m.index) });
+      const ap = parts.get(key);
+      if (part === 'low') ap.low.push(entityId);
+      else if (!ap[part]) ap[part] = entityId;
+      break;
+    }
+  }
+  for (const [key, ap] of parts) {
+    if (!ap.state && !ap.finished) continue;
+    const dev = devices[key];
+    const name = (dev && (dev.name_by_user || dev.name)) || ap.prefix.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    roomFor(ap.state || ap.finished).appliances.push({ id: key.replace(/[^a-z0-9_]/gi, '_'), name, state: ap.state, finished: ap.finished, door: ap.door, low: ap.low });
   }
 
   // A vacuum that reports which room it is in (Dreame, Valetudo and others
@@ -219,7 +266,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
   const houseRooms = [...rooms.values()].filter(
     (r) =>
       r.id !== UNASSIGNED ||
-      r.lights.length + r.switches.length + r.media.length + r.vacuums.length + r.doors.length + r.cameras.length > 0,
+      r.lights.length + r.switches.length + r.media.length + r.vacuums.length + r.doors.length + r.cameras.length + r.appliances.length + r.alarms.length + r.levels.length > 0,
   );
 
   return {

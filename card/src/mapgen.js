@@ -41,6 +41,7 @@ const MAX_LAMPS = 32; // per room
 
 // Room themes by name. First match wins; English and Swedish names.
 const THEMES = [
+  { re: /spooky|haunted|ghost|spök/i, wall: 'GSTONE1', floor: 'FLAT1_3', ceil: 'CEIL3_1', light: 96 },
   { re: /kitchen|kök|kok/i, wall: 'COMPTILE', floor: 'FLOOR1_1', ceil: 'CEIL1_1' },
   { re: /bath|toilet|wc|shower|badrum|toalett|dusch|tvätt|laundry|utility/i, wall: 'MARBGRAY', floor: 'FLAT1_3', ceil: 'CEIL3_1' },
   { re: /bed|sov|nursery|guest|gäst|barn|kid/i, wall: 'WOOD1', floor: 'FLAT14', ceil: 'CEIL1_3' },
