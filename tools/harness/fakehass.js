@@ -181,7 +181,7 @@ export function addChores(hass, { smoke = true } = {}) {
 // People Bermuda follows: Alex's phone sends the Companion app's beacon and
 // Bermuda has it in the Kitchen; the hall tablet sends one too, but it is a
 // Fully Kiosk wall screen. withSam adds a second person nobody follows.
-export function addPeople(hass, { withSam = false, nearHall = false } = {}) {
+export function addPeople(hass, { withSam = false, nearHall = false, positions = false } = {}) {
   const old = new Date(Date.now() - 3600e3).toISOString();
   const add = (entityId, state, attributes, platform) => {
     hass.states[entityId] = { entity_id: entityId, state, attributes, last_changed: old, last_updated: old };
@@ -203,5 +203,31 @@ export function addPeople(hass, { withSam = false, nearHall = false } = {}) {
   add('sensor.hall_tablet_beacon_monitor', 'Monitoring', { friendly_name: 'Hall tablet Beacon monitor', 'aaaa1111-2222-3333-4444-555566667777_100_1': nearHall ? 1.5 : 9.2 }, 'mobile_app');
   hass.entities['sensor.hall_tablet_beacon_monitor'].area_id = 'hallway';
   if (nearHall === 'fresh') hass.states['sensor.hall_tablet_beacon_monitor'].last_updated = new Date().toISOString();
+  if (positions) addPositions(hass);
   return hass;
+}
+
+// For positions within a room (harness plan positions.json): three Bluetooth
+// listeners in the kitchen hearing Alex at (2, 4) m, and an LD2410 radar in
+// the living room seeing somebody 3 m in front of it.
+export const KITCHEN_LISTENERS = { KitchenA: [0.5, 0.5], KitchenB: [5.5, 0.5], KitchenC: [3, 5.5] };
+export function setAlexAt(hass, [x, y]) {
+  const now = new Date().toISOString();
+  for (const [name, at] of Object.entries(KITCHEN_LISTENERS)) {
+    const id = `sensor.bermuda_aaaa1111222233334444555566667777_100_1_distance_to_${name.toLowerCase()}`;
+    hass.states[id] = { entity_id: id, state: String(Math.hypot(x - at[0], y - at[1]).toFixed(2)), attributes: { friendly_name: `Alex phone Distance to ${name}`, unit_of_measurement: 'm' }, last_changed: now, last_updated: now };
+    hass.entities[id] = hass.entities[id] || { entity_id: id, area_id: null, device_id: null, platform: 'bermuda' };
+  }
+}
+function addPositions(hass) {
+  for (const name of Object.keys(KITCHEN_LISTENERS)) hass.devices[`dev_${name}`] = { id: `dev_${name}`, name, area_id: 'kitchen' };
+  setAlexAt(hass, [2, 4]);
+  const now = new Date().toISOString();
+  hass.devices.dev_radar = { id: 'dev_radar', name: 'HLK-LD2410_TEST', area_id: 'living_room' };
+  const add = (id, state, attributes) => {
+    hass.states[id] = { entity_id: id, state, attributes, last_changed: now, last_updated: now };
+    hass.entities[id] = { entity_id: id, area_id: null, device_id: 'dev_radar', platform: 'ld2410' };
+  };
+  add('sensor.lounge_radar_moving_distance', '300', { friendly_name: 'Lounge radar Moving distance', unit_of_measurement: 'cm' });
+  add('binary_sensor.lounge_radar_occupancy', 'on', { friendly_name: 'Lounge radar Occupancy', device_class: 'occupancy' });
 }

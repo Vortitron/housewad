@@ -140,3 +140,12 @@ test('a plan room can name the tablet that listens for phones in it', () => {
   assert.deepEqual(cinema.listeners, ['sensor.saga_beacon_monitor']);
   assert.equal(cinema.near, 2.5);
 });
+
+test("the annex path never cuts through a room on its way to a yard", async () => {
+  const { readFileSync } = await import('node:fs');
+  // The hall's front door is east, above the living room: stretching that
+  // yard down to the annex path would run through the living room.
+  const positions = JSON.parse(readFileSync(new URL('../tools/harness/positions.json', import.meta.url)));
+  const withLeftovers = { ...house, rooms: [...house.rooms, room('garage', 'Garage', { lights: [{ entity_id: 'light.garage' }] })] };
+  assert.doesNotThrow(() => generateFromPlan(positions, withLeftovers));
+});

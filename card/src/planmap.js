@@ -30,6 +30,14 @@
 // Areas that mean the whole house ("anywhere": ["residence"]) get no room of
 // their own: their lamps and switches are spread over the plan's rooms.
 //
+// Where Bluetooth listeners and radars are, for a position within a room
+// (metres on the plan; facing in degrees on the plan, 0 east, 90 south; a
+// level if not the main one). A listener with no position counts as the
+// middle of its room.
+//
+//     "scanners": { "BedroomLights": [11.2, 12.5], "LoftC3": { "at": [14, 1], "level": "loft" } },
+//     "radars":   [{ "radar": "allrum_motion", "at": [12.5, 6.3], "facing": 0, "level": "down" }],
+//
 // A room can name a tablet that listens for phones' beacons (the Companion
 // app's Beacon monitor): "listeners": ["sensor.saga_beacon_monitor"], and
 // "near" (metres, default 3). A phone that close to it is in that room.
@@ -258,8 +266,12 @@ export function generateFromPlan(plan, house) {
       touch.push(span);
       x += w + 64;
     }
-    // Make sure the path reaches a yard: stretch the south-most yard down.
-    const south = yards.reduce((best, y) => (!best || y.rect.y1 < best.rect.y1 ? y : best), null);
+    // Make sure the path reaches a yard: stretch one down to it, the
+    // southmost whose way down is clear of every room (a stretch through a
+    // room would overlap it).
+    const rooms = [...roomOf.values()].filter((r) => !String(r.id).startsWith('_annex')).flatMap((r) => r.rects);
+    const clear = (y) => rooms.every((q) => q.x2 <= y.rect.x1 || q.x1 >= y.rect.x2 || q.y1 >= y.rect.y1 || q.y2 <= bb.y1);
+    const south = yards.filter((y) => y.rect.y1 <= bb.y1 || clear(y)).reduce((best, y) => (!best || y.rect.y1 < best.rect.y1 ? y : best), null);
     if (south && south.rect.y1 > bb.y1) b.addRect(south.sector, south.rect.x1, bb.y1, south.rect.x2, south.rect.y1);
   }
 
@@ -381,8 +393,35 @@ export function generateFromPlan(plan, house) {
   }
 
   for (const info of roomOf.values()) {
-    manifest.rooms.push({ id: info.id, name: info.name, listeners: (info.plan && info.plan.listeners) || [], near: info.plan && info.plan.near, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
+    manifest.rooms.push({ id: info.id, name: info.name, rects: info.rects, listeners: (info.plan && info.plan.listeners) || [], near: info.plan && info.plan.near, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
   }
+  // Bluetooth listeners and radars, on the map. A level from the plan, else
+  // from the room their Home Assistant area is in.
+  manifest.unitsPerMetre = S;
+  const scannerAreas = new Map();
+  for (const p of house.people || []) for (const r of p.ranges || []) if (r.area) scannerAreas.set(r.scanner, r.area);
+  const levelFor = (explicit, areaId) => {
+    if (explicit) return levelOf(explicit);
+    const pr = areaId && plan.rooms.find((r) => r.area && norm(r.area) === norm(areaId));
+    return levelOf(pr && pr.level);
+  };
+  manifest.scanners = {};
+  for (const [name, v] of Object.entries(plan.scanners || {})) {
+    const at = Array.isArray(v) ? v : v.at;
+    const lv = levelFor(!Array.isArray(v) && v.level, scannerAreas.get(name));
+    manifest.scanners[name] = [XL(lv)(at[0]), YL(lv)(at[1])];
+  }
+  manifest.radars = (plan.radars || []).map((r) => {
+    const hr = (house.radars || []).find((x) => x.prefix === r.radar || x.name === r.radar || x.id === r.radar);
+    const lv = levelFor(r.level, hr && hr.area);
+    const x = XL(lv)(r.at[0]);
+    const y = YL(lv)(r.at[1]);
+    // The room it's in: the one whose rects hold its spot.
+    const room = [...roomOf.values()].find((info) => info.rects.some((q) => x >= q.x1 - GAP * 2 && x <= q.x2 + GAP * 2 && y >= q.y1 - GAP * 2 && y <= q.y2 + GAP * 2));
+    // The plan's y runs down the page, the map's up: angles turn the other way.
+    return { radar: r.radar, x, y, facing: -(r.facing || 0), room: room ? room.id : null };
+  });
+
   // Bridges and line problems flicker the lights of the room you start in.
   manifest.hallSectors = startRoom.sectors.slice(0, 1);
   const map = b.build();

@@ -34,6 +34,7 @@ enum
     HW_EV_CONFIRM = 8, // a: token, b: 1 for yes
     HW_EV_HURT = 9,    // a: slot, b: damage, c: 1 if the player did it (puppets only)
     HW_EV_EXIT = 10,   // the player left the level by the exit
+    HW_EV_TAKEOVER = 11, // the player moved while walking to a goal: they have taken over
 };
 
 boolean HW_IsHouseSpecial(int special);
@@ -47,5 +48,7 @@ void HW_LevelReady(int map);
 void HW_Fatal(const char *message);
 void HW_PuppetChase(struct mobj_s *actor);
 void HW_LevelExit(void);
+struct player_s;
+void HW_PlayerWalk(struct player_s *player);
 
 #endif

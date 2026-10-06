@@ -277,6 +277,7 @@ export function buildHouse(hass, { exclude = [] } = {}) {
     // A phone that is a person is not a keycard lying about.
     trackers: findTrackers(hass, exclude).filter((t) => !people.some((p) => p.area === t.entity_id)),
     people,
+    radars: findRadars(hass, exclude),
     // Tablets and phones that listen for beacons (the Companion app's Beacon
     // monitor) and are in an area: a phone close to one is in that room.
     listeners: Object.keys(hass.states)
@@ -292,6 +293,54 @@ export function buildHouse(hass, { exclude = [] } = {}) {
 // us the beacon's id (sensor.<phone>_ble_transmitter, attribute "id"), and
 // Bermuda names its room sensor after the same id. A wall tablet (Fully
 // Kiosk on it) is a fixed screen, not somebody walking about.
+// The area a Bluetooth listener is in. Bermuda goes by the listener's
+// Bluetooth device ("Name (MAC)"), which can sit in another area from the
+// device itself; prefer that one, as Bermuda does.
+function scannerArea(hass, scanner) {
+  const devs = Object.values(hass.devices || {});
+  const name = (d) => d.name_by_user || d.name || '';
+  const bt = devs.find((d) => name(d).startsWith(`${scanner} (`) && d.area_id);
+  const main = devs.find((d) => name(d) === scanner && d.area_id);
+  return (bt || main || {}).area_id || null;
+}
+
+// Radars that see people: an LD2410 (distance only, straight ahead of it) or
+// an LD2450 (x and y of up to three people). Found by their sensors' names,
+// as the LD2410 integration and ESPHome name them.
+export function findRadars(hass, exclude = []) {
+  const entities = hass.entities || {};
+  const byDevice = new Map();
+  for (const id of Object.keys(hass.states).sort()) {
+    if (exclude.some((p) => matches(p, id))) continue;
+    const dev = entities[id] && entities[id].device_id;
+    if (!dev) continue;
+    const m = id.match(/^sensor\.(.+?)_(moving_distance|detect_distance|detection_distance|still_distance|static_distance|target_(\d)_(x|y))$/);
+    const presence = id.startsWith('binary_sensor.') && ['occupancy', 'presence', 'motion'].includes(hass.states[id].attributes.device_class);
+    if (!m && !presence) continue;
+    if (!byDevice.has(dev)) byDevice.set(dev, { distances: [], targets: new Map(), presence: [] });
+    const r = byDevice.get(dev);
+    if (presence) r.presence.push(id);
+    else if (m[3]) {
+      const t = r.targets.get(m[3]) || {};
+      t[m[4]] = id;
+      r.targets.set(m[3], t);
+      r.prefix = r.prefix || m[1];
+    } else {
+      r.distances.push(id);
+      r.prefix = r.prefix || m[1];
+    }
+  }
+  const devices = hass.devices || {};
+  const out = [];
+  for (const [dev, r] of byDevice) {
+    const targets = [...r.targets.values()].filter((t) => t.x && t.y);
+    if (!r.distances.length && !targets.length) continue;
+    const d = devices[dev] || {};
+    out.push({ id: dev, name: d.name_by_user || d.name || r.prefix, prefix: r.prefix, area: d.area_id || null, kind: targets.length ? 'xy' : 'distance', distances: r.distances, targets, presence: r.presence });
+  }
+  return out;
+}
+
 export function findPeople(hass, exclude = []) {
   const ids = Object.keys(hass.states);
   const persons = ids.filter((id) => id.startsWith('person.')).map((id) => hass.states[id]);
@@ -309,7 +358,17 @@ export function findPeople(hass, exclude = []) {
     const person = persons.find((p) => (p.attributes.device_trackers || []).includes(`device_tracker.${phone}`));
     const tracker = hass.states[`device_tracker.${phone}`];
     const name = person ? person.attributes.friendly_name || person.entity_id : (tracker && tracker.attributes.friendly_name) || phone.replace(/_/g, ' ');
-    out.push({ id: phone, name, person: person ? person.entity_id : null, area, beacon: String(beacon).toLowerCase() });
+    // Bermuda's distance to each listener that hears it (sensors it creates
+    // switched off; turn them on for a position within the room), and to
+    // the nearest one.
+    const base = area.replace(/_area$/, '');
+    const ranges = ids
+      .filter((e) => e.startsWith(`${base}_distance_to_`))
+      .map((e) => {
+        const scanner = String(hass.states[e].attributes.friendly_name || '').replace(/^.*Distance to /, '') || e.slice(`${base}_distance_to_`.length);
+        return { entity: e, scanner, area: scannerArea(hass, scanner) };
+      });
+    out.push({ id: phone, name, person: person ? person.entity_id : null, area, beacon: String(beacon).toLowerCase(), ranges, distance: hass.states[`${base}_distance`] ? `${base}_distance` : null });
   }
   return out;
 }

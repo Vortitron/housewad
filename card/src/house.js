@@ -6,10 +6,11 @@
 // Game -> house: shooting, using and killing things become service calls,
 // through HouseActions (allowlist, rate limits, practice mode).
 
+import { trilaterate, keepInside, radarPoint, Smooth } from './locate.js';
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
 
-const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9, EXIT: 10 };
+const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9, EXIT: 10, TAKEOVER: 11 };
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4, COUNT: 8 };
 
 const MONSTER_SLOT_BASE = 2000;
@@ -64,6 +65,8 @@ export class HouseLink {
     this.follow = follow; // true: the viewer's own phone; a phone or person id: that one; false: never
     this.following = false;
     this.followSeen = { room: null, since: 0, done: null };
+    this.followPausedUntil = 0;
+    this.smooth = new Map(); // person -> Smooth
     this.tally = new Map();
     this.last = null;
     this.worldPrev = new Map(); // world signal -> last state seen
@@ -243,6 +246,9 @@ export class HouseLink {
           return this._monsterHurt(a, b, c === 1);
         case EV.EXIT:
           return this._levelExit(b, c);
+        case EV.TAKEOVER:
+          this.followPausedUntil = Date.now() + 20000;
+          return this.message('You took over. Follow picks up again in 20 seconds.');
         default:
           return undefined;
       }
@@ -597,6 +603,9 @@ export class HouseLink {
       const presence = room.presence.map((p) => a.state(p.entity_id)).filter(Boolean);
       const here = people.filter((p) => whereIs.get(p.id) === room.id);
       const occupied = presence.some(isOn) || here.length > 0;
+      // While you are followed you are the player: no imp of you as well.
+      const me = this.following ? this.followTarget() : null;
+      const others = here.filter((p) => !me || p.id !== me.id);
       const sensed = presence.length > 0 || everyoneKnown;
       const emptyFor = Math.min(presence.length ? Math.min(...presence.map(ago)) : Infinity, everyoneKnown ? peopleEmptyFor : Infinity);
 
@@ -633,12 +642,15 @@ export class HouseLink {
       }
 
       // Somebody is in the room: one imp, however many sensors agree.
-      if (occupied && imps < MAX_IMPS) {
+      // Motion in the room you are followed into is you, unless somebody else is there.
+      const motionIsMe = me && here.some((p) => p.id === me.id);
+      if (((presence.some(isOn) && !motionIsMe) || others.length) && imps < MAX_IMPS) {
         imps++;
-        const who = here.map((p) => p.name).join(' and ');
+        const who = others.map((p) => p.name).join(' and ');
         want.set(`imp:${room.id}`, {
           type: 'imp',
           room: room.id,
+          people: others.map((p) => p.id),
           label: who ? `${who}: in the ${room.name}` : `Movement in the ${room.name}`,
           onKill: () => this.message(who ? `That was only ${who}. Still in the ${room.name}.` : `That was only movement in the ${room.name}. It'll be back.`),
         });
@@ -753,13 +765,15 @@ export class HouseLink {
     // hallway with only a wall tablet in it): an imp there too.
     for (const info of this.manifest.rooms) {
       if (this.houseRoom.has(info.id) || imps >= MAX_IMPS) continue;
-      const here = people.filter((p) => whereIs.get(p.id) === info.id);
+      const me = this.following ? this.followTarget() : null;
+      const here = people.filter((p) => whereIs.get(p.id) === info.id && (!me || p.id !== me.id));
       if (!here.length) continue;
       imps++;
       const who = here.map((p) => p.name).join(' and ');
       want.set(`imp:${info.id}`, {
         type: 'imp',
         room: info.id,
+        people: here.map((p) => p.id),
         label: `${who}: in the ${info.name}`,
         onKill: () => this.message(`That was only ${who}. Still in the ${info.name}.`),
       });
@@ -841,40 +855,139 @@ export class HouseLink {
   setFollowing(on) {
     const target = this.followTarget();
     this.following = !!(on && target);
+    if (!this.following) this.m._hw_player_goal(0, 0, 0);
     this.followSeen = { room: null, since: 0, done: this.currentRoom };
     if (on && !target) this.message('No phone to follow: link yours to your person in Home Assistant, or set follow in the card.');
     else if (on) this.message(`Following ${target.name}.`);
     return this.following;
   }
 
-  // Bermuda flips between neighbouring rooms: move only once the phone has
-  // stayed in a new room for a few seconds, and only if the player isn't
-  // there already.
+  // Bermuda flips between neighbouring rooms: change room only once the
+  // phone has stayed in a new one for a few seconds. Within the room, walk to
+  // where the phone seems to be, smoothly; a movement key hands back control
+  // for a while.
   _followTick() {
     if (!this.following) return;
     const target = this.followTarget();
     if (!target) return;
-    const room = this._peopleRooms().whereIs.get(target.id);
     const now = Date.now();
+    if (now < this.followPausedUntil) return;
+    const { whereIs } = this._peopleRooms();
+    const room = whereIs.get(target.id);
     if (room !== this.followSeen.room) {
       this.followSeen.room = room;
       this.followSeen.since = now;
-      return;
     }
-    if (!room || room === this.followSeen.done || now - this.followSeen.since < (this.rules.follow_settle_s || 6) * 1000) return;
-    this.followSeen.done = room;
-    if (room === this.currentRoom) return;
+    const settled = room && now - this.followSeen.since >= (this.rules.follow_settle_s || 6) * 1000;
+    if (settled && room !== this.followSeen.done) {
+      this.followSeen.done = room;
+      if (room !== this.currentRoom) this._followInto(target, room);
+    }
+    if (room && room === this.currentRoom && room === this.followSeen.done) {
+      const pos = this._position(target, room);
+      if (pos) this.m._hw_player_goal(Math.round(pos[0]), Math.round(pos[1]), 3);
+    }
+  }
+
+  _followInto(target, room) {
     const info = this.roomInfo.get(room);
     if (!info) return;
+    const mid = this._middle(info);
     const taken = [...this.monsters.values()].map((m) => m.spot).filter(Boolean);
     const free = (s) => taken.every((t) => Math.hypot(t[0] - s[0], t[1] - s[1]) > 64);
-    const mid = info.center || [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
-    const spot = info.spawns.find(free) || mid;
-    // Face into the room (from its middle, any way will do).
-    const angle = spot === mid ? 90 : Math.round((Math.atan2(mid[1] - spot[1], mid[0] - spot[0]) * 180) / Math.PI + 360) % 360;
+    // Where the phone seems to be, if that's clear; else a clear spot.
+    const est = this._position(target, room);
+    const spot = (est && free(est) && est) || info.spawns.find(free) || mid;
+    const angle = Math.round((Math.atan2(mid[1] - spot[1], mid[0] - spot[0]) * 180) / Math.PI + 360) % 360 || 90;
     if (this.m._hw_teleport(Math.round(spot[0]), Math.round(spot[1]), angle)) {
       this.sound('telept');
       this.message(`${target.name} is in the ${info.name}. So are you.`);
+    }
+  }
+
+  _middle(info) {
+    return info.center || [Math.round((info.bbox.x1 + info.bbox.x2) / 2), Math.round((info.bbox.y1 + info.bbox.y2) / 2)];
+  }
+
+  // Where in a room a person is: a radar there if it sees someone, else the
+  // point that best fits Bermuda's distances to each listener, kept inside
+  // the room and smoothed so it moves like a walk.
+  _position(person, room) {
+    const info = this.roomInfo.get(room);
+    if (!info) return null;
+    const a = this.actions;
+    const U = this.manifest.unitsPerMetre || 64;
+    const rects = info.rects || [info.bbox];
+    const mid = this._middle(info);
+    const smooth = this.smooth.get(person.id) || new Smooth(0.25);
+    this.smooth.set(person.id, smooth);
+    if (smooth.room !== room) {
+      smooth.reset();
+      smooth.room = room;
+    }
+    const prior = smooth.p || mid;
+    let raw = null;
+    for (const r of this.manifest.radars || []) {
+      if (r.room !== room) continue;
+      const pt = this._radarSees(r, U, prior);
+      if (pt) raw = pt;
+    }
+    if (!raw) {
+      const fresh = (st) => st && Date.now() - new Date(st.last_updated || st.last_changed || 0).getTime() < 120000;
+      const anchors = (person.ranges || [])
+        .map((rg) => {
+          const st = a.state(rg.entity);
+          const d = parseFloat(st?.state);
+          const at = (this.manifest.scanners || {})[rg.scanner] || (rg.area && this.roomInfo.get(rg.area) && this._middle(this.roomInfo.get(rg.area)));
+          return fresh(st) && d >= 0 && at ? { x: at[0], y: at[1], d: d * U } : null;
+        })
+        .filter(Boolean);
+      raw = anchors.length ? trilaterate(anchors, prior) : null;
+    }
+    return smooth.next(keepInside(raw || prior, rects));
+  }
+
+  // A radar's reading: an LD2410's distance straight ahead of it, or the
+  // LD2450 target nearest where we thought the person was.
+  _radarSees(r, U, prior) {
+    const a = this.actions;
+    const hr = (this.house.radars || []).find((x) => x.prefix === r.radar || x.name === r.radar || x.id === r.radar);
+    if (!hr) return null;
+    if (hr.presence.length && !hr.presence.some((id) => isOn(a.state(id)))) return null;
+    const metres = (id) => {
+      const st = a.state(id);
+      const v = parseFloat(st?.state);
+      if (!Number.isFinite(v)) return null;
+      const unit = st.attributes.unit_of_measurement || 'cm';
+      return v / ({ mm: 1000, cm: 100, m: 1 }[unit] || 100);
+    };
+    if (hr.kind === 'distance') {
+      const d = hr.distances.map(metres).find((v) => v > 0);
+      return d ? radarPoint([r.x, r.y], r.facing, { distance: d * U }) : null;
+    }
+    const seen = hr.targets
+      .map((t) => ({ x: metres(t.x), y: metres(t.y) }))
+      .filter((t) => t.x !== null && t.y !== null && (t.x !== 0 || t.y !== 0))
+      .map((t) => radarPoint([r.x, r.y], r.facing, { x: t.x * U, y: t.y * U }));
+    if (!seen.length) return null;
+    return seen.reduce((best, p) => (Math.hypot(p[0] - prior[0], p[1] - prior[1]) < Math.hypot(best[0] - prior[0], best[1] - prior[1]) ? p : best));
+  }
+
+  // The imp for somebody in a room walks to where they seem to be (a puppet:
+  // it is a person, it doesn't fight).
+  _steerPeople() {
+    for (const mon of this.monsters.values()) {
+      const ids = mon.spec.people;
+      if (!ids || !ids.length || this.m._hw_slot_state(mon.slot) !== 1) continue;
+      const person = (this.house.people || []).find((p) => p.id === ids[0]);
+      if (!person || !this.m._hw_slot_pos(mon.slot, this.out)) continue;
+      // The followed player is that person already; their imp would only crowd them.
+      const pos = this._position(person, mon.spec.room);
+      if (!pos) continue;
+      const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+      const dist = Math.hypot(pos[0] - v[0], pos[1] - v[1]);
+      const heading = Math.round((Math.atan2(pos[1] - v[1], pos[0] - v[0]) * 180) / Math.PI);
+      this.m._hw_puppet(mon.slot, 1, heading, dist < 24 ? 0 : Math.min(8, Math.ceil(dist / 6)));
     }
   }
 
@@ -1010,6 +1123,8 @@ export class HouseLink {
         this.slotKey.delete(mon.slot);
         continue;
       }
+      // Same monster, newer details: who it is, what it says, what it's for.
+      if (state === 1) mon.spec = { ...spec, slotInRoom: mon.spec.slotInRoom };
       if (spec.vacuum) {
         if (state === 1 && spec.dormant && !mon.dormant && now - (mon.wokenAt || 0) > 15000) {
           // Gone back to the dock (or never left it): back to sleep.
@@ -1266,6 +1381,7 @@ export class HouseLink {
     if (!this.ready) return;
     this._worldEffects();
     this._followTick();
+    this._steerPeople();
     const p = this.player();
     if (!p) return;
     const room = this.manifest.sectorRoom[p.sector];

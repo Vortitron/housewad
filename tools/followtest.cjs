@@ -53,7 +53,8 @@ const AREA = 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area';
   // Bermuda loses the phone for a few seconds: Alex is still in the living room.
   await moveAlex('unknown');
   await page.waitForTimeout(3000);
-  assert.equal(await page.evaluate(() => window.card.link.monsters.has('imp:living_room')), true, 'no blinking out on a short unknown');
+  assert.equal(await page.evaluate(() => window.card.link._peopleRooms().whereIs.get('alex_phone')), 'living_room', 'no blinking out on a short unknown');
+  assert.equal(await page.evaluate(() => window.card.link.monsters.has('imp:living_room')), false, 'and no imp of Alex while Alex is the player');
   await moveAlex('Living Room');
 
   // Off again, Alex moves on: the player doesn't.

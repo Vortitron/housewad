@@ -27,6 +27,7 @@
 #include "p_local.h"
 
 #include "doomstat.h"
+#include "hw_house.h"
 
 
 
@@ -161,6 +162,9 @@ void P_MovePlayer (player_t* player)
     {
 	P_SetMobjState (player->mo, S_PLAY_RUN1);
     }
+
+    // house.wad: Follow walks the player to where their phone is.
+    HW_PlayerWalk (player);
 }	
 
 

@@ -1,0 +1,16 @@
+{
+ "rooms": [
+  { "id": "kitchen", "area": "kitchen", "height": 2.4, "rects": [[0, 0, 6, 6]] },
+  { "id": "hall", "area": "hallway", "height": 2.4, "rects": [[6, 0, 10, 3]] },
+  { "id": "living", "area": "living_room", "height": 2.4, "rects": [[6, 3, 12, 9]] }
+ ],
+ "doors": [
+  { "rooms": ["kitchen", "hall"], "at": [[6, 1], [6, 2]] },
+  { "rooms": ["hall", "living"], "at": [[8, 3], [9, 3]] },
+  { "rooms": ["kitchen", "living"], "at": [[6, 4.5], [6, 5.5]] }
+ ],
+ "exits": [{ "room": "hall", "name": "Front door", "at": [[10, 1], [10, 2]] }],
+ "scanners": { "KitchenA": [0.5, 0.5], "KitchenB": [5.5, 0.5], "KitchenC": [3, 5.5] },
+ "radars": [{ "radar": "lounge_radar", "at": [6.3, 6], "facing": 0 }],
+ "start": { "room": "hall", "at": [8, 1.5] }
+}

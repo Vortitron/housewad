@@ -2,6 +2,7 @@
 //
 // Copyright (C) 2026 Vome. GPL-2.0-or-later, like the engine it links into.
 
+#include <math.h>
 #include <string.h>
 
 #include <emscripten.h>
@@ -17,6 +18,7 @@
 #include "p_mobj.h"
 #include "p_spec.h"
 #include "r_data.h"
+#include "r_main.h"
 #include "r_state.h"
 #include "s_sound.h"
 #include "sounds.h"
@@ -440,6 +442,59 @@ int hw_teleport(int x, int y, int angle)
     p->mo->angle = (angle_t) (((unsigned long long) (angle % 360) << 32) / 360);
     p->mo->momx = p->mo->momy = p->mo->momz = 0;
     return 1;
+}
+
+// Walk the player towards a point, a step each tic, as if they were walking
+// there themselves: walls, doors and monsters stop them as usual. JavaScript
+// moves the goal as the house's idea of where the person is changes (Follow).
+// speed is map units per tic; 0 stops. Movement keys hand control back.
+static struct
+{
+    int active;
+    fixed_t x, y;
+    int speed;
+} walk_goal;
+
+EMSCRIPTEN_KEEPALIVE
+void hw_player_goal(int x, int y, int speed)
+{
+    walk_goal.x = x << FRACBITS;
+    walk_goal.y = y << FRACBITS;
+    walk_goal.speed = speed;
+    walk_goal.active = speed > 0;
+}
+
+void HW_PlayerWalk(player_t *player)
+{
+    mobj_t *mo = player->mo;
+    ticcmd_t *cmd = &player->cmd;
+    double dx, dy, dist, step;
+
+    if (!walk_goal.active || mo == NULL || player->playerstate != PST_LIVE)
+        return;
+    if (cmd->forwardmove || cmd->sidemove)
+    {
+        walk_goal.active = 0;
+        js_house_event(HW_EV_TAKEOVER, 0, 0, 0);
+        return;
+    }
+    dx = (double) (walk_goal.x - mo->x) / FRACUNIT;
+    dy = (double) (walk_goal.y - mo->y) / FRACUNIT;
+    dist = sqrt(dx * dx + dy * dy);
+    if (dist < 6)
+        return;
+    // Slow down for the last few steps rather than overshoot.
+    step = dist / 6 < walk_goal.speed ? dist / 6 : walk_goal.speed;
+    mo->momx = (fixed_t) (dx / dist * step * FRACUNIT);
+    mo->momy = (fixed_t) (dy / dist * step * FRACUNIT);
+    // Face the way we walk, turning gently; the mouse still turns freely.
+    if (!cmd->angleturn && dist > 24)
+    {
+        angle_t want = R_PointToAngle2(mo->x, mo->y, walk_goal.x, walk_goal.y);
+        mo->angle += (angle_t) ((int) (want - mo->angle) / 10);
+    }
+    if (mo->state == &states[S_PLAY])
+        P_SetMobjState(mo, S_PLAY_RUN1);
 }
 
 // Damage a slot's thing as if the player had shot it. For tests.

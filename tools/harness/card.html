@@ -6,7 +6,8 @@
 <script>/* ?panel: full width under a 56px header, like a Lovelace panel view */ if (/[?&]panel\b/.test(location.search)) addEventListener('DOMContentLoaded', () => document.body.classList.add('panel'));</script>
 <housewad-card></housewad-card>
 <script type="module">
-import { makeFakeHass, addChores, addPeople } from './fakehass.js';
+import { makeFakeHass, addChores, addPeople, setAlexAt } from './fakehass.js';
+window.setAlexAt = setAlexAt;
 await import('../../dist/housewad-card.js');
 const card = document.querySelector('housewad-card');
 const params = new URLSearchParams(location.search);
@@ -18,7 +19,7 @@ window.hass = makeFakeHass((h) => { card.hass = h; window.hass = h; });
 // ?chores: a dishwasher with chores waiting, beans running out, smoke.
 if (params.has('chores')) addChores(window.hass);
 // ?people (or ?people=sam): Alex's phone in the Kitchen, a kiosk tablet, maybe Sam unfollowed.
-if (params.has('people')) addPeople(window.hass, { withSam: params.get('people') === 'sam', nearHall: { hall: 'fresh', stalehall: 'stale' }[params.get('people')] || false });
+if (params.has('people')) addPeople(window.hass, { withSam: params.get('people') === 'sam', nearHall: { hall: 'fresh', stalehall: 'stale' }[params.get('people')] || false, positions: params.get('people') === 'positions' });
 card.hass = window.hass;
 window.card = card;
 window.booted = true;

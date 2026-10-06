@@ -40,7 +40,7 @@ function asset(name, base) {
 }
 
 // The engine exports the card needs; a missing one means mismatched files.
-const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm'];
+const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal'];
 
 let iwadPromise = null;
 function loadIwad(base) {

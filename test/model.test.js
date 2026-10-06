@@ -121,7 +121,7 @@ test('appliances, alarms and running-out levels are found by what their sensors 
 
 test('phones Bermuda follows are people; a kiosk tablet is not, and neither is a keycard', () => {
   const house = buildHouse(addPeople(makeFakeHass()));
-  assert.deepEqual(house.people, [{ id: 'alex_phone', name: 'Alex', person: 'person.alex', area: 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', beacon: 'aaaa1111-2222-3333-4444-555566667777_100_1' }]);
+  assert.deepEqual(house.people, [{ id: 'alex_phone', name: 'Alex', person: 'person.alex', area: 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', beacon: 'aaaa1111-2222-3333-4444-555566667777_100_1', ranges: [], distance: null }]);
   assert.ok(!house.trackers.some((t) => t.entity_id.includes('aaaa1111')), 'the phone is not a keycard');
   assert.ok(house.persons.includes('person.alex'));
 });

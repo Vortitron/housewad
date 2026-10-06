@@ -68,6 +68,11 @@ A tablet can be a listener for a room with no Bluetooth proxy. The Companion app
 
 **Follow.** With a phone followed, the game bar has a *Follow* button: on, you are taken to the room your phone is in, once it has stayed there a few seconds (Bermuda flips between neighbouring rooms, and a flip is not a move). It follows the phone of the person you are logged in as; set `follow: pixel_8` (a phone) or `follow: false` in the card, or choose in its settings.
 
+**Where in the room.** Inside the room, Follow walks you to where the phone seems to be rather than jumping there:
+- *Bluetooth:* turn on Bermuda's *Distance to …* sensors for the phone (Bermuda creates them switched off) and the game finds the point that best fits every listener's distance, nearer listeners counting for more, kept inside the room and smoothed into a walk. Tell the plan where the listeners are (`scanners: { BedroomLights: [11.2, 12.5] }`); one without a position counts as the middle of its room.
+- *Radar:* an HLK-LD2410 (distance only: you are placed that far straight in front of it) or an LD2450 (x and y of up to three people) is better still. Give its spot and the way it faces on the plan (`radars: [{ radar: allrum_motion, at: [12.5, 6.3], facing: 0 }]`; facing 0 is east, 90 south).
+- Press a movement key and you take over; Follow picks up again 20 seconds later. Other people Bermuda follows are imps that walk to where they are, and don't fight.
+
 ### The outside world
 
 If the home watches public switches from [sync.vome.io](https://sync.vome.io) (the [Vome](https://github.com/Vortitron/VomeSync) integration's shared switches, which follow real things: bridges opening, services going down, earthquakes, rocket launches), the level hears about them:
