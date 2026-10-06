@@ -105,6 +105,19 @@ type: custom:housewad-card
 
 The download is about 19 MB, nearly all of it the game's graphics and sound ([Freedoom](https://freedoom.github.io/)). It is fetched once, when you press Play.
 
+## In Claude Code, in a terminal
+
+The same game runs in a Claude Code pane, drawn in coloured half blocks, with the
+[vome-doom](https://github.com/Vortitron/home-assistant-mcp/tree/main/claude-plugin/vome-doom)
+plugin. It reads your home through the Vome MCP, runs the engine under Node
+(`dist/housewad-term.mjs`, see `host/terminal.js`) and makes the game's calls on
+your house through the MCP too:
+
+```
+/plugin install vome-doom --marketplace Vortitron/home-assistant-mcp
+/doom
+```
+
 ## Practice, or for real
 
 The card starts on a title screen with two buttons:
