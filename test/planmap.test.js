@@ -149,3 +149,25 @@ test("the annex path never cuts through a room on its way to a yard", async () =
   const withLeftovers = { ...house, rooms: [...house.rooms, room('garage', 'Garage', { lights: [{ entity_id: 'light.garage' }] })] };
   assert.doesNotThrow(() => generateFromPlan(positions, withLeftovers));
 });
+
+test('a door out opens into a garden drawn on the plan; a door it does not touch gets a yard', () => {
+  const garden = {
+    rooms: [
+      { id: 'hall', name: 'Hall', rects: [[0, 0, 4, 3]] },
+      { id: 'garden', name: 'Back garden', outdoor: true, rects: [[4, -3, 7, 3], [0, -3, 4, 0]] },
+    ],
+    open: [],
+    doors: [],
+    exits: [
+      { room: 'hall', name: 'Back door', at: [[4, 1], [4, 2]], outside: 'garden' },
+      { room: 'hall', name: 'Side door', at: [[0, 1], [0, 2]], outside: 'garden' },
+    ],
+    start: { room: 'hall', at: [2, 1.5] },
+  };
+  const { manifest } = generateFromPlan(garden, { rooms: [] });
+  const ids = manifest.rooms.map((r) => r.id);
+  assert.ok(ids.includes('_plan_garden'), 'the garden is a room');
+  assert.equal(manifest.rooms.find((r) => r.id === '_plan_garden').outdoor, true);
+  const yards = manifest.rooms.filter((r) => r.id.startsWith('_yard_'));
+  assert.deepEqual(yards.map((r) => r.name), ['Outside the side door'], 'only the side door needs a yard');
+});

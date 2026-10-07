@@ -13,6 +13,8 @@
 //     "doors": [{ "rooms": ["saga", "living"], "at": [[10.33, 7.04], [10.33, 8.83]] }],
 //     "exits": [{ "room": "saga", "name": "Front door", "at": [[1.42, 7.84], [1.42, 9.62]],
 //                 "outside": "front_walkway" }],         // HA area for the yard (optional)
+//     (a garden can be a room too: "outdoor": true, under the sky; an exit
+//     whose "outside" names it opens straight into it, instead of a yard)
 //     "start": { "room": "saga", "at": [3, 8] } }
 //
 // More than one storey: give each other level an offset (metres, so it sits
@@ -188,13 +190,27 @@ export function generateFromPlan(plan, house) {
     const vertical = span.x2 - span.x1 < span.y2 - span.y1;
     const outward = outwardDir(span, info, vertical);
     const yard = yardRect(span, vertical, outward, Math.round(YARD_DEPTH * S));
-    const outsideHr = ex.outside ? byKey.get(norm(ex.outside)) : null;
-    if (outsideHr) used.add(outsideHr.id);
-    const yid = outsideHr ? outsideHr.id : `_yard_${i}`;
-    const ys = b.addSector({ floor: info.floorZ, ceil: info.floorZ + 288, floorTex: 'GRASS1', ceilTex: 'F_SKY1', wall: 'BRICK7', light: 200, priority: 1 });
-    b.addRect(ys, yard.x1, yard.y1, yard.x2, yard.y2);
-    yards.push({ id: yid, name: outsideHr ? outsideHr.name : ex.name ? `Outside the ${ex.name.toLowerCase()}` : 'Outside', sector: ys, rect: yard, house: outsideHr, floorZ: info.floorZ, door: info });
-    manifest.sectorRoom[ys] = { id: yid, name: yards[yards.length - 1].name, outdoor: true };
+    // A garden drawn on the plan (an outdoor room) right outside the door:
+    // the door opens into it. Otherwise the door gets a yard of its own.
+    const garden = ex.outside
+      ? [...roomOf.values()].find((r) => r.outdoor && r.plan && [r.plan.id, r.plan.area, r.id].some((k) => k && norm(k) === norm(ex.outside)) && (r.plan.level || null) === ((info.plan && info.plan.level) || null) && r.rects.some((q) => overlaps(q, yard)))
+      : null;
+    if (garden) {
+      garden.hosts = garden.hosts || [];
+      if (!garden.hosts.includes(info)) garden.hosts.push(info);
+    } else {
+      const outsideHr = ex.outside ? byKey.get(norm(ex.outside)) : null;
+      // An area a garden room already has would make the yard part of a room
+      // it doesn't touch: name the yard after the door instead.
+      const taken = outsideHr && [...roomOf.values()].some((r) => r.id === outsideHr.id && r.plan);
+      const named = taken ? null : outsideHr;
+      if (named) used.add(named.id);
+      const yid = named ? named.id : `_yard_${i}`;
+      const ys = b.addSector({ floor: info.floorZ, ceil: info.floorZ + 288, floorTex: 'GRASS1', ceilTex: 'F_SKY1', wall: 'BRICK7', light: 200, priority: 1 });
+      b.addRect(ys, yard.x1, yard.y1, yard.x2, yard.y2);
+      yards.push({ id: yid, name: named ? named.name : ex.name ? `Outside the ${ex.name.toLowerCase()}` : 'Outside', sector: ys, rect: yard, house: named, floorZ: info.floorZ, door: info });
+      manifest.sectorRoom[ys] = { id: yid, name: yards[yards.length - 1].name, outdoor: true };
+    }
 
     const ds = b.addSector({ floor: info.floorZ, ceil: info.floorZ, floorTex: themeFor(info.name).floor, ceilTex: 'CEIL3_5', wall: 'DOORTRAK', light: 160, priority: 0 });
     b.addRect(ds, span.x1, span.y1, span.x2, span.y2);
@@ -282,6 +298,7 @@ export function generateFromPlan(plan, house) {
       r.sectors.push(y.sector);
       r.rects.push(y.rect);
       r.bbox = bboxOf(r.rects);
+      r.hosts = r.hosts || [];
       if (!r.hosts.includes(y.door)) r.hosts.push(y.door);
       continue;
     }
@@ -569,6 +586,11 @@ function outwardDir(span, info, vertical) {
   const c = info.center;
   if (vertical) return (span.x1 + span.x2) / 2 > c[0] ? 1 : -1;
   return (span.y1 + span.y2) / 2 > c[1] ? 1 : -1;
+}
+
+// Whether two rects share some area (touching edges don't count).
+function overlaps(a, c) {
+  return a.x1 < c.x2 && c.x1 < a.x2 && a.y1 < c.y2 && c.y1 < a.y2;
 }
 
 function yardRect(span, vertical, dir, depth) {
