@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lightColour, kelvinToRgb, wallsFromLumps } from '../card/src/overmap.js';
+import { lightColour, kelvinToRgb, wallsFromLumps, joinStrips } from '../card/src/overmap.js';
 import { encodeMap } from '../card/src/geometry.js';
 
 test('a light that is off gives no colour', () => {
@@ -42,4 +42,9 @@ test('walls and doors come out of the level itself', () => {
   const { walls, doors } = wallsFromLumps(encodeMap(map));
   assert.deepEqual(walls, [[0, 0, 64, 0]]);
   assert.deepEqual(doors, [[64, 0, 64, 64]], 'a door; the plain two-sided line is no wall');
+});
+
+test("the strip between two rects of one room is the room's too", () => {
+  const strips = joinStrips([{ x1: 0, y1: 0, x2: 100, y2: 50 }, { x1: 108, y1: 10, x2: 200, y2: 80 }, { x1: 0, y1: 58, x2: 60, y2: 90 }]);
+  assert.deepEqual(strips, [{ x1: 100, x2: 108, y1: 10, y2: 50 }, { y1: 50, y2: 58, x1: 0, x2: 60 }]);
 });

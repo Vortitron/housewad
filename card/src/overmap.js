@@ -34,6 +34,25 @@ export function wallsFromLumps(lumps) {
   return { walls, doors };
 }
 
+// A room's rects are inset half a wall each, so two rects of one room that
+// meet leave a thin strip between them: the strips, to fill with the room.
+export function joinStrips(rects, gap = 9) {
+  const strips = [];
+  for (let i = 0; i < rects.length; i++) {
+    for (let j = i + 1; j < rects.length; j++) {
+      const [a, b] = [rects[i], rects[j]];
+      const lo = (p, q) => Math.max(p, q);
+      const hi = (p, q) => Math.min(p, q);
+      // Side by side (a gap in x), overlapping in y; then the other way round.
+      for (const [l, r] of [[a, b], [b, a]]) {
+        if (r.x1 - l.x2 >= 0 && r.x1 - l.x2 <= gap && hi(l.y2, r.y2) > lo(l.y1, r.y1)) strips.push({ x1: l.x2, x2: r.x1, y1: lo(l.y1, r.y1), y2: hi(l.y2, r.y2) });
+        if (r.y1 - l.y2 >= 0 && r.y1 - l.y2 <= gap && hi(l.x2, r.x2) > lo(l.x1, r.x1)) strips.push({ y1: l.y2, y2: r.y1, x1: lo(l.x1, r.x1), x2: hi(l.x2, r.x2) });
+      }
+    }
+  }
+  return strips;
+}
+
 // Roughly the colour of a white light at this colour temperature.
 export function kelvinToRgb(k) {
   const t = Math.min(40000, Math.max(1000, k)) / 100;

@@ -9,7 +9,7 @@
 import { trilaterate, keepInside, radarPoint, Smooth } from './locate.js';
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
-import { lightColour } from './overmap.js';
+import { lightColour, joinStrips } from './overmap.js';
 
 const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9, EXIT: 10, TAKEOVER: 11 };
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4, COUNT: 8 };
@@ -1045,7 +1045,7 @@ export class HouseLink {
         const c = r.center || [(r.bbox.x1 + r.bbox.x2) / 2, (r.bbox.y1 + r.bbox.y2) / 2];
         const box = rects.find((q) => c[0] >= q.x1 && c[0] <= q.x2 && c[1] >= q.y1 && c[1] <= q.y2) || r.bbox;
         const named = r.name && !String(r.id).startsWith('_annex_path');
-        return { id: r.id, rects, c, box, name: named ? r.name : null, lights: (this.houseRoom.get(r.id)?.lights || []).map((l) => l.entity_id) };
+        return { id: r.id, rects: [...rects, ...joinStrips(rects)], c, box, name: named ? r.name : null, lights: (this.houseRoom.get(r.id)?.lights || []).map((l) => l.entity_id) };
       });
     }
     const rooms = this._mapRooms.map((r) => ({ ...r, lit: r.lights.map((id) => lightColour(this.actions.state(id))).filter(Boolean), lights: r.lights.length }));
@@ -1143,6 +1143,10 @@ export class HouseLink {
     const rooms = this.manifest.rooms.filter((r) => (r.floorZ || 0) === floor && !!r.annex === !!here.annex);
     if (!rooms.length) return;
     const b = { x1: Math.min(...rooms.map((r) => r.bbox.x1)), y1: Math.min(...rooms.map((r) => r.bbox.y1)), x2: Math.max(...rooms.map((r) => r.bbox.x2)), y2: Math.max(...rooms.map((r) => r.bbox.y2)) };
+    // Only a different floor: going from room to room keeps where you panned to.
+    const key = `${b.x1},${b.y1},${b.x2},${b.y2}`;
+    if (key === this._floorKey) return;
+    this._floorKey = key;
     this.m._hw_map_view(b.x1, b.y1, b.x2, b.y2);
   }
 

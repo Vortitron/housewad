@@ -1384,6 +1384,9 @@ void hw_map_view(int x1, int y1, int x2, int y2)
     hw_view[2] = x2 << FRACBITS;
     hw_view[3] = y2 << FRACBITS;
     hw_view_set = x2 > x1 && y2 > y1;
+    // A new floor while the map is up: show it.
+    if (automapactive)
+        AM_fitHouseView();
 }
 
 static void AM_fitHouseView(void)
