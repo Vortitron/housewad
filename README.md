@@ -213,7 +213,13 @@ More than one storey: Doom can't put a room above another, so each other level s
   #   - { id: spooky, name: Spooky toilet, rects: [...], things: [barrel, barrel, candle] }
 ```
 
-The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. Sweet Home 3D import is on the way.
+The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. **Sweet Home 3D.** The card's settings can download the plan as a Sweet Home 3D file (`.sh3d`) and load one back. [Sweet Home 3D](https://www.sweethome3d.com) is free and is the easy way to draw a house:
+- Name each room after its Home Assistant area.
+- A gap in a wall, or a door from its catalogue, is a door. Rooms with no wall between them are open to each other.
+- A room without a ceiling is a garden.
+- A label `BLE: name` marks a Bluetooth proxy, `Radar: sensor_id facing 90` a radar, and `Start` where you start.
+
+Levels stack at their floor heights. What Sweet Home 3D has no place for (areas, stairs, phone-listening tablets) travels inside the file, so a plan that goes out and comes back is the same plan. Sweet Home 3D 5.3 or newer is needed. The same conversion works on the command line: `node tools/sh3d.mjs export plan.json house.sh3d` and `node tools/sh3d.mjs import house.sh3d plan.json`.
 
 ## Building from source
 
