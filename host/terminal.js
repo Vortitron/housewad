@@ -19,7 +19,7 @@
 //           message a line, read in name order and deleted, as stdin cannot
 //           stay open: {"t":"key","key":"up"} (a terminal key name or a character),
 //           {"t":"reply","id":n,"error":null}, {"t":"state","entity_id",
-//           "state":{...}}, {"t":"quit"}.
+//           "state":{...}}, {"t":"size","columns":c,"rows":r}, {"t":"quit"}.
 //
 // A terminal reports key presses, never releases, so a press holds the Doom
 // key for a moment and its auto-repeat keeps holding it.
@@ -57,15 +57,27 @@ const fail = (text) => {
 process.on('uncaughtException', (e) => fail(e && e.message ? e.message : e));
 process.on('unhandledRejection', (e) => fail(e && e.message ? e.message : e));
 
-// The frame: 320x200 Doom pixels, shown at 4:3 (Doom's pixels are taller than
-// wide), fitted into the cells asked for, two pixels a cell with a half block.
-const aspectHeight = 240;
-const scale = Math.min(wantColumns / 320, (wantRows * 2) / aspectHeight);
-const columns = Math.max(1, Math.round(320 * scale));
-const pixelRows = Math.max(2, Math.round(aspectHeight * scale));
-const rows = Math.ceil(pixelRows / 2);
-const cellBytes = Buffer.alloc(columns * rows * 12);
-for (let i = 0; i < columns * rows; i++) cellBytes.writeUInt32LE(0x2580, i * 12);
+// The frame: Doom's 320x200 pixels, two to a cell with a half block, filling
+// the width asked for. Doom's pixels are taller than wide, so 4:3 is the
+// shape it was drawn for: the picture is as tall as 4:3 allows, or as the
+// rows asked for allow, stretched a little when they are fewer. The caller can
+// ask again mid-game ({"t":"size"}) when its pane changes, and gets a new
+// "ready" with the size it will now draw.
+let columns = 0;
+let pixelRows = 0;
+let rows = 0;
+let cellBytes = Buffer.alloc(0);
+
+function setSize(wantedColumns, wantedRows) {
+  const c = Math.max(40, Math.min(240, Math.round(Number(wantedColumns) || 100)));
+  const r = Math.max(12, Math.min(120, Math.round(Number(wantedRows) || 38)));
+  columns = c;
+  pixelRows = Math.max(2, Math.min(r * 2, Math.round(c * 0.75)));
+  rows = Math.ceil(pixelRows / 2);
+  cellBytes = Buffer.alloc(columns * rows * 12);
+  for (let i = 0; i < columns * rows; i++) cellBytes.writeUInt32LE(0x2580, i * 12);
+}
+setSize(wantColumns, wantRows);
 
 function present(rgba, width, height) {
   // Box-average each output pixel's source block.
@@ -331,6 +343,10 @@ async function main() {
 
   watchInput((m) => {
     if (m.t === 'key' && typeof m.key === 'string') press(engine, m.key);
+    else if (m.t === 'size') {
+      setSize(m.columns, m.rows);
+      send({ t: 'ready', columns, rows });
+    }
     else if (m.t === 'reply') {
       const call = calls.get(m.id);
       if (!call) return;

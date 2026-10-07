@@ -38,7 +38,23 @@ test('the terminal host sends its size, then frames of half-block cells', { skip
       }
     });
   });
-  writeFileSync(join(input, '000001.json'), '{"t":"quit"}\n');
+  // A pane that grows asks again, and the next frames are the new size.
+  writeFileSync(join(input, '000001.json'), '{"t":"size","columns":120,"rows":20}\n');
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('no new size')), 10000);
+    const check = setInterval(() => {
+      const again = messages.filter((m) => m.t === 'ready');
+      if (again.length >= 2) {
+        clearTimeout(timer);
+        clearInterval(check);
+        resolve();
+      }
+    }, 50);
+  });
+  const resized = messages.filter((m) => m.t === 'ready')[1];
+  // The full width; 20 rows are fewer than 4:3 wants (45), so it fills them.
+  assert.deepEqual([resized.columns, resized.rows], [120, 20]);
+  writeFileSync(join(input, '000002.json'), '{"t":"quit"}\n');
   child.kill();
   assert.equal(messages[0].t, 'ready');
   const { columns, rows } = messages[0];
