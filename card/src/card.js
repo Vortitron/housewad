@@ -16,12 +16,14 @@
 //   floorplan: { rooms: [...], doors: [...], exits: [...] }   # the real layout (see planmap.js)
 //   follow: true           # Follow button: the player goes where your phone is (true: the phone of
 //                          # the person you are logged in as; or a phone id like pixel_8; false: off)
+//   classic_map: false     # true: the overhead map as Doom draws it (320x200), not the card's sharp one
 //   rules: { empty_minutes: 10, standby_min: 0.3, standby_max: 15 }
 
 import { DoomEngine, KEY } from './engine.js';
 import { buildHouse } from './model.js';
 import { generateMap } from './mapgen.js';
 import { generateFromPlan } from './planmap.js';
+import { OverMap, wallsFromLumps } from './overmap.js';
 import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW, entityContext } from './actions.js';
@@ -40,7 +42,7 @@ function asset(name, base) {
 }
 
 // The engine exports the card needs; a missing one means mismatched files.
-const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal', '_hw_map_label', '_hw_map_zoom'];
+const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal', '_hw_map_label', '_hw_map_zoom', '_hw_map_frame'];
 
 let iwadPromise = null;
 function loadIwad(base) {
@@ -63,6 +65,7 @@ const STYLE = `
   :host { --hw-width: min(100%, calc((100dvh - var(--header-height, 56px) - 96px) * 4 / 3)); }
   .screen { position: relative; width: var(--hw-width); margin: 0 auto; aspect-ratio: 4 / 3; background: #000; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+  canvas.hires { inset: 0 0 auto 0; height: 84%; display: none; pointer-events: none; image-rendering: auto; }
   .start, .busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; box-sizing: border-box; text-align: center; background: radial-gradient(circle at 50% 40%, #3a0a05 0%, #0b0000 75%); color: #f2d7a6; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .title { font-size: clamp(28px, 7vw, 56px); font-weight: 900; letter-spacing: 2px; color: #ff3b1f; text-shadow: 0 3px 0 #5a0000, 0 0 24px #ff3b1f66; }
   .sub { font-size: 14px; opacity: .85; max-width: 32em; }
@@ -227,6 +230,7 @@ class HouseWadCard extends HTMLElement {
       } catch (e) {
         // Freedoom's own titles will do.
       }
+      this._walls = wallsFromLumps(lumps);
       const pwad = await buildNodes(createZdbsp, writeWad(lumps), { wasmUrl: asset('housewad-zdbsp.wasm', base) });
       this._renderGame(mode);
       const canvas = this.shadowRoot.querySelector('canvas');
@@ -288,6 +292,7 @@ class HouseWadCard extends HTMLElement {
       // The level is built once; say so when the house gains something.
       this._placed = houseThings(house);
       this.timers.push(setInterval(() => this._lookForNewThings(), 15000));
+      this._startMap();
       this.shadowRoot.querySelector('.screen').focus();
     } catch (e) {
       console.error('[housewad]', e);
@@ -303,6 +308,7 @@ class HouseWadCard extends HTMLElement {
         <div class="wrap">
         <div class="screen" tabindex="0" aria-label="house.wad game. Click to capture the mouse.">
           <canvas width="320" height="200"></canvas>
+          <canvas class="hires" aria-hidden="true"></canvas>
           <div class="confirm">
             <button data-answer="y">YES</button>
             <button data-answer="n">NO</button>
@@ -405,7 +411,15 @@ class HouseWadCard extends HTMLElement {
     // double-click a room to go there. Otherwise it is Doom's mouse.
     const mapOn = () => !!(engine.module._hw_automap_on && engine.module._hw_automap_on());
     const canvas = this.shadowRoot.querySelector('canvas');
+    const hires = this.shadowRoot.querySelector('canvas.hires');
+    // The pointer as a pixel of Doom's 320x200 frame. Over the card's own
+    // map, through that map's view (it shows a little more than the frame).
     const frame = (e) => {
+      if (this.overmap && hires.style.display === 'block') {
+        const r = hires.getBoundingClientRect();
+        if (e.clientY > r.bottom) return [NaN, NaN];
+        return this.overmap.toDoom(e.clientX - r.left, e.clientY - r.top);
+      }
       const r = canvas.getBoundingClientRect();
       return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height];
     };
@@ -438,7 +452,7 @@ class HouseWadCard extends HTMLElement {
         if (drag) {
           const dx = at[0] - drag.at[0];
           const dy = at[1] - drag.at[1];
-          if (drag.moved || Math.hypot(dx, dy) > 2) {
+          if (Number.isFinite(dx) && Number.isFinite(dy) && (drag.moved || Math.hypot(dx, dy) > 2)) {
             drag.moved = true;
             engine.module._hw_map_pan(Math.round(dx), Math.round(dy));
             drag.at = at;
@@ -458,6 +472,7 @@ class HouseWadCard extends HTMLElement {
         if (!mapOn()) return;
         e.preventDefault();
         const [x, y] = frame(e);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         engine.module._hw_map_zoom(e.deltaY < 0 ? 1200 : 833, Math.round(x), Math.round(y));
       },
       { passive: false },
@@ -553,7 +568,35 @@ class HouseWadCard extends HTMLElement {
     }, 100);
   }
 
+  // The card's own overhead map: while Doom's is up, draw it again over the
+  // game at the screen's resolution (see overmap.js).
+  _startMap() {
+    const el = this.shadowRoot.querySelector('canvas.hires');
+    if (!el || this.config.classic_map) return;
+    const map = (this.overmap = new OverMap(el));
+    this.link.hiresMap = true;
+    let last = 0;
+    const frame = (now) => {
+      if (this.overmap !== map) return;
+      this._raf = requestAnimationFrame(frame);
+      if (now - last < 33) return;
+      last = now;
+      const scene = this.link && this.link.mapScene();
+      if (!scene) {
+        if (el.style.display) el.style.display = '';
+        return;
+      }
+      el.style.height = `${(scene.view.fh / 200) * 100}%`;
+      el.style.display = 'block';
+      map.draw({ ...scene, ...this._walls });
+    };
+    this._raf = requestAnimationFrame(frame);
+  }
+
   _stop() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = null;
+    this.overmap = null;
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.link) this.link.close();

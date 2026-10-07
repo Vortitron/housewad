@@ -9,6 +9,7 @@
 import { trilaterate, keepInside, radarPoint, Smooth } from './locate.js';
 import { friendlyName } from './model.js';
 import { SPECIAL } from './mapgen.js';
+import { lightColour } from './overmap.js';
 
 const EV = { LEVEL: 1, SHOT: 2, WAKE: 3, KILL: 4, GONE: 5, USE: 6, SHOOT_LINE: 7, CONFIRM: 8, HURT: 9, EXIT: 10, TAKEOVER: 11 };
 const SPAWN = { FOG: 1, DORMANT: 2, AMBUSH: 4, COUNT: 8 };
@@ -1010,10 +1011,54 @@ export class HouseLink {
 
   // The overhead map and the mouse ---------------------------------------
   // Screen pixel (the 320x200 frame) to a map point, while the map is up.
+  // (The card's own sharp map shows a little more than Doom's frame, so a
+  // pixel off the frame is fine then.)
   mapPoint(sx, sy) {
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
+    const v = this.mapView();
+    if (v) {
+      if (!this.hiresMap && (sy < 0 || sy >= v.fh)) return null;
+      const per = v.w / v.fw;
+      return { x: v.x + sx * per, y: v.y + (v.fh - sy) * per, tol: Math.max(16, 8 * per) };
+    }
     if (!this.m._hw_map_to_world || !this.m._hw_map_to_world(Math.round(sx), Math.round(sy), this.out)) return null;
-    const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 3);
-    return { x: v[0], y: v[1], tol: Math.max(16, v[2]) };
+    const o = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 3);
+    return { x: o[0], y: o[1], tol: Math.max(16, o[2]) };
+  }
+
+  // Doom's window on the map (map units, and its frame in pixels), or null
+  // when the map is off.
+  mapView() {
+    if (typeof this.m._hw_map_frame !== 'function' || !this.m._hw_map_frame(this.out)) return null;
+    const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 6);
+    return { x: v[0] / 65536, y: v[1] / 65536, w: v[2] / 65536, h: v[3] / 65536, fw: v[4], fh: v[5] };
+  }
+
+  // Everything the card's sharp map draws, as it is right now: each room in
+  // the colours of its lights that are on, the lamps, the demons, the people.
+  mapScene() {
+    const view = this.mapView();
+    if (!view) return null;
+    if (!this._mapRooms) {
+      this._mapRooms = this.manifest.rooms.map((r) => {
+        const rects = r.rects || [r.bbox];
+        const c = r.center || [(r.bbox.x1 + r.bbox.x2) / 2, (r.bbox.y1 + r.bbox.y2) / 2];
+        const box = rects.find((q) => c[0] >= q.x1 && c[0] <= q.x2 && c[1] >= q.y1 && c[1] <= q.y2) || r.bbox;
+        const named = r.name && !String(r.id).startsWith('_annex_path');
+        return { id: r.id, rects, c, box, name: named ? r.name : null, lights: (this.houseRoom.get(r.id)?.lights || []).map((l) => l.entity_id) };
+      });
+    }
+    const rooms = this._mapRooms.map((r) => ({ ...r, lit: r.lights.map((id) => lightColour(this.actions.state(id))).filter(Boolean), lights: r.lights.length }));
+    const lamps = this.manifest.lamps.map((l) => ({ x: l.x, y: l.y, colour: lightColour(this.actions.state(l.entity)) }));
+    const things = [];
+    for (const mon of this.monsters.values()) {
+      if (this.m._hw_slot_state(mon.slot) !== 1 || !this.m._hw_slot_pos(mon.slot, this.out)) continue;
+      const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+      const kind = mon.spec.people && mon.spec.people.length ? 'person' : mon.spec.fly ? 'fly' : mon.dormant ? 'asleep' : 'demon';
+      things.push({ x: v[0], y: v[1], kind, big: !!mon.spec.big });
+    }
+    const hover = this.hoverRoom && this._mapRooms.find((r) => r.id === this.hoverRoom);
+    return { view, rooms, lamps, things, player: this.player(), hoverRoom: hover || null, unitsPerMetre: this.manifest.unitsPerMetre || 0 };
   }
 
   _roomAt(x, y) {
@@ -1039,8 +1084,12 @@ export class HouseLink {
   // What is under the pointer, for the status line.
   mapHover(sx, sy) {
     const p = this.mapPoint(sx, sy);
-    if (!p) return (this.hoverText = null);
+    if (!p) {
+      this.hoverRoom = null;
+      return (this.hoverText = null);
+    }
     const room = this._roomAt(p.x, p.y);
+    this.hoverRoom = room ? room.id : null;
     const thing = this._thingAt(p.x, p.y, p.tol);
     let what = '';
     if (thing && thing.kind === 'lamp') {

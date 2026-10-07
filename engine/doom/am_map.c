@@ -1639,6 +1639,23 @@ void hw_map_zoom(int permille, int sx, int sy)
     f_oldloc.x = INT_MAX;
 }
 
+// The map's window, for the card to draw the map itself at screen
+// resolution: out[0..3] m_x, m_y, m_w, m_h (16.16 fixed, map units),
+// out[4], out[5] the frame's size in pixels. Returns 0 when the map is off.
+EMSCRIPTEN_KEEPALIVE
+int hw_map_frame(int *out)
+{
+    if (!automapactive)
+        return 0;
+    out[0] = m_x;
+    out[1] = m_y;
+    out[2] = m_w;
+    out[3] = m_h;
+    out[4] = f_w;
+    out[5] = f_h;
+    return 1;
+}
+
 // out[0], out[1]: the map point under screen pixel (sx, sy); out[2]: map
 // units in 8 pixels, for how near a click must be. Returns 0 off the map.
 EMSCRIPTEN_KEEPALIVE

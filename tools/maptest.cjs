@@ -38,11 +38,20 @@ const SP = process.env.SP || '/tmp';
   assert.ok(has((r, g, bl) => g > 120 && g > r + 40 && g > bl + 40), 'green: Alex or a fly brain');
   // The mouse works the map. Screen pixels of the 320x200 frame, to page pixels.
   const box = await card.evaluate((el) => { const r = el.shadowRoot.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
-  const toPage = (fx, fy) => [box.x + (fx / 320) * box.w, box.y + (fy / 200) * box.h];
+  // Over the card's own sharp map, through its view; else Doom's frame stretched.
+  const hires = await card.evaluate((el) => !!el.overmap);
+  let toPage = (fx, fy) => [box.x + (fx / 320) * box.w, box.y + (fy / 200) * box.h];
+  if (hires) {
+    const pts = {};
+    toPage = (fx, fy) => pts[`${fx},${fy}`];
+    const want = async (fx, fy) => (pts[`${fx},${fy}`] = await card.evaluate((el, [x, y]) => { const r = el.shadowRoot.querySelector('canvas.hires').getBoundingClientRect(); const p = el.overmap.fromDoom(x, y); return [r.left + p[0], r.top + p[1]]; }, [fx, fy]));
+    toPage.want = want;
+  }
+  const at = async (fx, fy) => (toPage.want ? (await toPage.want(fx, fy)) : toPage(fx, fy));
   const world = (fx, fy) => page.evaluate(([x, y]) => window.card.link.mapPoint(x, y), [fx, fy]);
   const before = await world(160, 84);
   // Wheel in: one map pixel covers less of the house.
-  await page.mouse.move(...toPage(160, 84));
+  await page.mouse.move(...(await at(160, 84)));
   await page.mouse.wheel(0, -200);
   await page.waitForTimeout(300);
   const zoomed = await world(160, 84);
@@ -50,7 +59,7 @@ const SP = process.env.SP || '/tmp';
   assert.ok(Math.hypot(zoomed.x - before.x, zoomed.y - before.y) < before.tol, 'about the point under the pointer');
   // Drag: the map moves with the pointer.
   await page.mouse.down();
-  await page.mouse.move(...toPage(200, 84), { steps: 5 });
+  await page.mouse.move(...(await at(200, 84)), { steps: 5 });
   await page.mouse.up();
   await page.waitForTimeout(200);
   const panned = await world(160, 84);
@@ -67,13 +76,13 @@ const SP = process.env.SP || '/tmp';
     return { entity: lamp.entity };
   });
   assert.ok(lamp.x !== undefined, 'the lamp is on the map');
-  await page.mouse.move(...toPage(lamp.x, lamp.y));
+  await page.mouse.move(...(await at(lamp.x, lamp.y)));
   await page.waitForTimeout(300);
   const hover = await page.evaluate(() => window.card.link.status().target);
   console.log('hover:', hover);
   assert.match(hover, /click to switch/);
   const wasOn = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
-  await page.mouse.click(...toPage(lamp.x, lamp.y));
+  await page.mouse.click(...(await at(lamp.x, lamp.y)));
   await page.waitForTimeout(800);
   const nowOn = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
   assert.notEqual(nowOn, wasOn, `clicking the lamp switched it (${wasOn} -> ${nowOn})`);
@@ -88,7 +97,7 @@ const SP = process.env.SP || '/tmp';
     return null;
   });
   assert.ok(kitchen, 'the kitchen is on the map');
-  await page.mouse.dblclick(...toPage(kitchen.x, kitchen.y));
+  await page.mouse.dblclick(...(await at(kitchen.x, kitchen.y)));
   await page.waitForTimeout(500);
   const where = await page.evaluate(() => { const l = window.card.link; return (l.manifest.sectorRoom[l.player().sector] || {}).id; });
   assert.equal(where, 'kitchen', 'double-click took you there');

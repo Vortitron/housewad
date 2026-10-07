@@ -25,14 +25,14 @@ export function makeFakeHass(onUpdate) {
     entities[entityId] = { entity_id: entityId, area_id: deviceId ? null : areaId, device_id: deviceId || null };
     if (deviceId && !devices[deviceId]) devices[deviceId] = { id: deviceId, area_id: areaId, name: deviceId };
   };
-  const light = (id, name, areaId, on = true, brightness = 255) =>
-    add(`light.${id}`, on ? 'on' : 'off', { friendly_name: name, brightness: on ? brightness : null }, areaId);
+  const light = (id, name, areaId, on = true, brightness = 255, colour = {}) =>
+    add(`light.${id}`, on ? 'on' : 'off', { friendly_name: name, brightness: on ? brightness : null, ...(on ? colour : {}) }, areaId);
 
   light('hallway', 'Hallway Light', 'hallway');
   light('kitchen_ceiling', 'Kitchen Ceiling', 'kitchen');
   light('kitchen_island', 'Kitchen Island', 'kitchen', false);
-  light('floor_lamp', 'Floor Lamp', 'living_room', true, 180);
-  light('sofa', 'Sofa Lamp', 'living_room');
+  light('floor_lamp', 'Floor Lamp', 'living_room', true, 180, { color_mode: 'rgb', rgb_color: [255, 40, 160] });
+  light('sofa', 'Sofa Lamp', 'living_room', true, 255, { color_mode: 'color_temp', color_temp_kelvin: 6500 });
   light('garage', 'Garage Light', 'garage', false);
   light('bedside', 'Bedside Lamp', 'bedroom');
   light('bathroom', 'Bathroom Light', 'bathroom', false);
