@@ -45,6 +45,16 @@
 
 #include "am_map.h"
 
+// house.wad: the automap shows the house at a glance (see AM_drawHouse).
+#include <ctype.h>
+#include <emscripten.h>
+#include "info.h"
+#include "hu_stuff.h"
+#include "i_swap.h"
+#include "hw_house.h"
+extern patch_t *hu_font[HU_FONTSIZE];
+static void AM_fitHouseView(void);
+
 
 // For use if I do walls with outsides/insides
 #define REDS		(256-5*16)
@@ -178,6 +188,18 @@ mline_t triangle_guy[] = {
     { { (fixed_t)(-.867*R), (fixed_t)(-.5*R) }, { (fixed_t)(.867*R ), (fixed_t)(-.5*R) } },
     { { (fixed_t)(.867*R ), (fixed_t)(-.5*R) }, { (fixed_t)(0      ), (fixed_t)(R    ) } },
     { { (fixed_t)(0      ), (fixed_t)(R    ) }, { (fixed_t)(-.867*R), (fixed_t)(-.5*R) } }
+};
+#undef R
+
+#define R (FRACUNIT)
+// house.wad: a lamp is a diamond; one that is on has rays.
+mline_t lamp_diamond[] = {
+    { { -R, 0 }, { 0, R } }, { { 0, R }, { R, 0 } },
+    { { R, 0 }, { 0, -R } }, { { 0, -R }, { -R, 0 } }
+};
+mline_t lamp_rays[] = {
+    { { (fixed_t)(-1.8*R), 0 }, { (fixed_t)(-1.3*R), 0 } }, { { (fixed_t)(1.3*R), 0 }, { (fixed_t)(1.8*R), 0 } },
+    { { 0, (fixed_t)(-1.8*R) }, { 0, (fixed_t)(-1.3*R) } }, { { 0, (fixed_t)(1.3*R) }, { 0, (fixed_t)(1.8*R) } }
 };
 #undef R
 
@@ -564,6 +586,7 @@ void AM_Start (void)
 	lastepisode = gameepisode;
     }
     AM_initVariables();
+    AM_fitHouseView();
     AM_loadPics();
 }
 
@@ -1308,6 +1331,160 @@ AM_drawThings
     }
 }
 
+// house.wad -------------------------------------------------------------
+// The house's things in colour, whether or not a cheat is on: lamps (yellow
+// on, grey off), demons (red, darker asleep), people and fly brains (green,
+// puppets), keycards and the like (blue). Room names come from JavaScript.
+
+#define HW_LAMP_ON   YELLOWS
+#define HW_LAMP_OFF  (GRAYS + 10)
+#define HW_DEMON     (REDS)
+#define HW_ASLEEP    (REDS + 10)
+#define HW_PERSON    (GREENS)
+#define HW_ITEM      (256 - 4 * 16 + 8)
+
+#define HW_MAX_LABELS 48
+static struct { fixed_t x, y, x1, y1, x2, y2; char text[24]; } hw_labels[HW_MAX_LABELS];
+static int hw_nlabels;
+
+// A room's name at (x, y), shown only while it fits inside the room's box
+// (x1, y1)-(x2, y2) on screen. An empty name clears them all.
+EMSCRIPTEN_KEEPALIVE
+void hw_map_label(int x, int y, int x1, int y1, int x2, int y2, const char *text)
+{
+    if (text == NULL || !*text)
+    {
+        hw_nlabels = 0;
+        return;
+    }
+    if (hw_nlabels >= HW_MAX_LABELS)
+        return;
+    hw_labels[hw_nlabels].x = x << FRACBITS;
+    hw_labels[hw_nlabels].y = y << FRACBITS;
+    hw_labels[hw_nlabels].x1 = x1 << FRACBITS;
+    hw_labels[hw_nlabels].y1 = y1 << FRACBITS;
+    hw_labels[hw_nlabels].x2 = x2 << FRACBITS;
+    hw_labels[hw_nlabels].y2 = y2 << FRACBITS;
+    M_StringCopy(hw_labels[hw_nlabels].text, text, sizeof(hw_labels[0].text));
+    hw_nlabels++;
+}
+
+// What the map opens on: the floor the player is on, fitted to the screen,
+// not following the player. JavaScript sets it as the player changes floor.
+static boolean hw_view_set;
+static fixed_t hw_view[4];
+
+EMSCRIPTEN_KEEPALIVE
+void hw_map_view(int x1, int y1, int x2, int y2)
+{
+    hw_view[0] = x1 << FRACBITS;
+    hw_view[1] = y1 << FRACBITS;
+    hw_view[2] = x2 << FRACBITS;
+    hw_view[3] = y2 << FRACBITS;
+    hw_view_set = x2 > x1 && y2 > y1;
+}
+
+static void AM_fitHouseView(void)
+{
+    fixed_t w, h, a, b;
+
+    if (!hw_view_set)
+        return;
+    w = hw_view[2] - hw_view[0];
+    h = hw_view[3] - hw_view[1];
+    // A little margin round the floor.
+    w += w / 8;
+    h += h / 8;
+    a = FixedDiv(f_w << FRACBITS, w);
+    b = FixedDiv(f_h << FRACBITS, h);
+    scale_mtof = a < b ? a : b;
+    if (scale_mtof < min_scale_mtof)
+        scale_mtof = min_scale_mtof;
+    scale_ftom = FixedDiv(FRACUNIT, scale_mtof);
+    m_w = FTOM(f_w);
+    m_h = FTOM(f_h);
+    m_x = (hw_view[0] + hw_view[2]) / 2 - m_w / 2;
+    m_y = (hw_view[1] + hw_view[3]) / 2 - m_h / 2;
+    m_x2 = m_x + m_w;
+    m_y2 = m_y + m_h;
+    followplayer = 0;
+    f_oldloc.x = INT_MAX;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int hw_automap_on(void)
+{
+    return automapactive;
+}
+
+static void AM_drawHouse(void)
+{
+    int i;
+    mobj_t *t;
+
+    for (i = 0; i < numsectors; i++)
+    {
+        for (t = sectors[i].thinglist; t; t = t->snext)
+        {
+            if (t->type == MT_HW_LAMP)
+            {
+                int on = t->state == &states[S_HW_LAMP_ON];
+                AM_drawLineCharacter(lamp_diamond, arrlen(lamp_diamond), 10 << FRACBITS, 0,
+                                     on ? HW_LAMP_ON : HW_LAMP_OFF, t->x, t->y);
+                if (on)
+                    AM_drawLineCharacter(lamp_rays, arrlen(lamp_rays), 10 << FRACBITS, 0, HW_LAMP_ON, t->x, t->y);
+            }
+            else if (t->hw_slot && (t->flags & MF_COUNTKILL || t->flags & MF_SHOOTABLE) && t->health > 0 && t->player == NULL)
+            {
+                int color = (t->hw_flags & HW_PUPPET) ? HW_PERSON : (t->hw_flags & HW_DORMANT) ? HW_ASLEEP : HW_DEMON;
+                AM_drawLineCharacter(triangle_guy, arrlen(triangle_guy), 16 << FRACBITS, t->angle, color, t->x, t->y);
+            }
+            else if (t->hw_slot && (t->flags & MF_SPECIAL))
+            {
+                AM_drawLineCharacter(lamp_diamond, arrlen(lamp_diamond), 8 << FRACBITS, ANG45, HW_ITEM, t->x, t->y);
+            }
+        }
+    }
+}
+
+// Room names, centred on each room, in the HUD font; only where they fit.
+static void AM_drawLabels(void)
+{
+    int i;
+
+    for (i = 0; i < hw_nlabels; i++)
+    {
+        const char *s = hw_labels[i].text;
+        int w = 0, x, y;
+        const char *c;
+
+        for (c = s; *c; c++)
+        {
+            int ch = toupper((unsigned char) *c) - HU_FONTSTART;
+            w += (ch < 0 || ch >= HU_FONTSIZE) ? 4 : SHORT(hu_font[ch]->width);
+        }
+        x = CXMTOF(hw_labels[i].x) - w / 2;
+        y = CYMTOF(hw_labels[i].y) - 4;
+        if (x < f_x || x + w >= f_x + f_w || y < f_y || y + 8 >= f_y + f_h)
+            continue;
+        // Only when the name fits inside its room as drawn.
+        if (CXMTOF(hw_labels[i].x2) - CXMTOF(hw_labels[i].x1) < w + 4
+            || CYMTOF(hw_labels[i].y1) - CYMTOF(hw_labels[i].y2) < 12)
+            continue;
+        for (c = s; *c; c++)
+        {
+            int ch = toupper((unsigned char) *c) - HU_FONTSTART;
+            if (ch < 0 || ch >= HU_FONTSIZE)
+            {
+                x += 4;
+                continue;
+            }
+            V_DrawPatch(x, y, hu_font[ch]);
+            x += SHORT(hu_font[ch]->width);
+        }
+    }
+}
+
 void AM_drawMarks(void)
 {
     int i, fx, fy, w, h;
@@ -1343,6 +1520,8 @@ void AM_Drawer (void)
     if (grid)
 	AM_drawGrid(GRIDCOLORS);
     AM_drawWalls();
+    AM_drawHouse();
+    AM_drawLabels();
     AM_drawPlayers();
     if (cheating==2)
 	AM_drawThings(THINGCOLORS, THINGRANGE);

@@ -260,6 +260,7 @@ export class HouseLink {
 
   _levelReady() {
     this.ready = true;
+    this._labelMap();
     this.tally = new Map();
     this.worldPrev.clear();
     this.items.clear();
@@ -991,6 +992,35 @@ export class HouseLink {
     }
   }
 
+  // Room names on the automap (Tab, or the Map button), in each room's middle.
+  _labelMap() {
+    if (typeof this.m._hw_map_label !== 'function') return;
+    const label = (x, y, box, text) =>
+      this.m.ccall('hw_map_label', null, ['number', 'number', 'number', 'number', 'number', 'number', 'string'], [x, y, box.x1, box.y1, box.x2, box.y2, text]);
+    label(0, 0, { x1: 0, y1: 0, x2: 0, y2: 0 }, '');
+    for (const r of this.manifest.rooms) {
+      if (!r.name || String(r.id).startsWith('_annex_path')) continue;
+      const c = r.center || [Math.round((r.bbox.x1 + r.bbox.x2) / 2), Math.round((r.bbox.y1 + r.bbox.y2) / 2)];
+      // The name goes in the rect it is centred in, so it never spills into the next room.
+      const rects = r.rects || [r.bbox];
+      const box = rects.find((q) => c[0] >= q.x1 && c[0] <= q.x2 && c[1] >= q.y1 && c[1] <= q.y2) || r.bbox;
+      label(Math.round(c[0]), Math.round(c[1]), box, hudText(r.name).slice(0, 23));
+    }
+  }
+
+  // The map opens on the floor you are on: every room at that height.
+  _viewFloor(roomId) {
+    if (typeof this.m._hw_map_view !== 'function') return;
+    const here = this.manifest.rooms.find((r) => r.id === roomId);
+    if (!here) return;
+    const floor = here.floorZ || 0;
+    // The annex (areas the plan has no room for) sits apart: only when you are in it.
+    const rooms = this.manifest.rooms.filter((r) => (r.floorZ || 0) === floor && !!r.annex === !!here.annex);
+    if (!rooms.length) return;
+    const b = { x1: Math.min(...rooms.map((r) => r.bbox.x1)), y1: Math.min(...rooms.map((r) => r.bbox.y1)), x2: Math.max(...rooms.map((r) => r.bbox.x2)), y2: Math.max(...rooms.map((r) => r.bbox.y2)) };
+    this.m._hw_map_view(b.x1, b.y1, b.x2, b.y2);
+  }
+
   _refused(entityId, r) {
     if (r.important) this.message(`${friendlyName(this._hass(), entityId)} looks important: tick it in the card's settings if you mean it`);
     else this.message(`${friendlyName(this._hass(), entityId)} is not allowed: tick it in the card's settings`);
@@ -1388,6 +1418,7 @@ export class HouseLink {
     const id = room ? room.id : null;
     if (id && id !== this.currentRoom) {
       this.currentRoom = id;
+      this._viewFloor(id);
       const house = this.houseRoom.get(id);
       let text = room.name;
       if (house && house.lights.length) {

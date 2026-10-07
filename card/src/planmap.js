@@ -259,7 +259,7 @@ export function generateFromPlan(plan, house) {
       const dw = b.addSector({ floor: 0, ceil: 112, floorTex: themeFor(hr.name).floor, ceilTex: 'CEIL3_5', wall: 'DOORTRAK', light: 160, priority: 0 });
       const span = { x1: x + w / 2 - 48, x2: x + w / 2 + 48, y1: r.y2, y2: bb.y1 - 64 };
       b.addRect(dw, span.x1, span.y1, span.x2, span.y2);
-      const info = { id: hr.id, name: hr.name, sectors: [s, dw], floorZ: 0, rects: [r], bbox: r, center: centreOf([r]), spawns: [], outdoor: false, fixtures: [], house: hr, height: 128 };
+      const info = { id: hr.id, name: hr.name, sectors: [s, dw], floorZ: 0, rects: [r], bbox: r, center: centreOf([r]), spawns: [], outdoor: false, fixtures: [], house: hr, height: 128, annex: true };
       roomOf.set(`_annex_${hr.id}`, info);
       manifest.sectorRoom[s] = { id: hr.id, name: hr.name };
       manifest.sectorRoom[dw] = { id: hr.id, name: hr.name };
@@ -393,7 +393,7 @@ export function generateFromPlan(plan, house) {
   }
 
   for (const info of roomOf.values()) {
-    manifest.rooms.push({ id: info.id, name: info.name, rects: info.rects, listeners: (info.plan && info.plan.listeners) || [], near: info.plan && info.plan.near, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
+    manifest.rooms.push({ id: info.id, name: info.name, annex: !!info.annex, rects: info.rects, listeners: (info.plan && info.plan.listeners) || [], near: info.plan && info.plan.near, sectors: info.sectors, floorZ: info.floorZ, bbox: info.bbox, center: info.center, spawns: info.spawns, outdoor: info.outdoor, fixtures: [] });
   }
   // Bluetooth listeners and radars, on the map. A level from the plan, else
   // from the room their Home Assistant area is in.

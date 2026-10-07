@@ -106,6 +106,12 @@ void HW_ResetLevel(void)
 
 void HW_LevelReady(int map)
 {
+    int i;
+
+    // The automap shows the whole house from the start, not only the walls
+    // you have walked past: it's a floor plan.
+    for (i = 0; i < numlines; i++)
+        lines[i].flags |= ML_MAPPED;
     js_house_event(HW_EV_LEVEL, map, 0, 0);
 }
 

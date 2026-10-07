@@ -40,7 +40,7 @@ function asset(name, base) {
 }
 
 // The engine exports the card needs; a missing one means mismatched files.
-const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal'];
+const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal', '_hw_map_label'];
 
 let iwadPromise = null;
 function loadIwad(base) {
@@ -316,6 +316,7 @@ class HouseWadCard extends HTMLElement {
             <div class="act">
               <div data-key="${KEY.FIRE}">FIRE</div>
               <div data-key="${KEY.USE}">USE</div>
+              <div data-key="${KEY.TAB}">MAP</div>
             </div>
           </div>
         </div>
@@ -328,6 +329,7 @@ class HouseWadCard extends HTMLElement {
         <div class="bar">
           <span class="mode ${mode}">${mode === 'real' ? 'LIVE: THIS IS YOUR HOUSE' : 'PRACTICE'}</span>
           <span class="spacer"></span>
+          <button class="map" title="The overhead map: lamps, demons and people at a glance (Tab)">Map</button>
           <button class="follow" hidden aria-pressed="false">Follow my phone</button>
           <button class="full">Full screen</button>
           <button class="quit">Quit</button>
@@ -335,6 +337,10 @@ class HouseWadCard extends HTMLElement {
         </div>
       </ha-card>`;
     this.shadowRoot.querySelector('button.quit').addEventListener('click', () => this._renderStart());
+    this.shadowRoot.querySelector('button.map').addEventListener('click', () => {
+      if (this.engine) this.engine.tap(KEY.TAB);
+      this.shadowRoot.querySelector('.screen').focus();
+    });
     this.shadowRoot.querySelector('button.full').addEventListener('click', () => {
       const wrap = this.shadowRoot.querySelector('.wrap');
       if (wrap.requestFullscreen) wrap.requestFullscreen();
