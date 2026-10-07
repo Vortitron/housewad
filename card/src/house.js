@@ -1008,6 +1008,82 @@ export class HouseLink {
     }
   }
 
+  // The overhead map and the mouse ---------------------------------------
+  // Screen pixel (the 320x200 frame) to a map point, while the map is up.
+  mapPoint(sx, sy) {
+    if (!this.m._hw_map_to_world || !this.m._hw_map_to_world(Math.round(sx), Math.round(sy), this.out)) return null;
+    const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 3);
+    return { x: v[0], y: v[1], tol: Math.max(16, v[2]) };
+  }
+
+  _roomAt(x, y) {
+    const inside = (q) => x >= q.x1 && x <= q.x2 && y >= q.y1 && y <= q.y2;
+    return this.manifest.rooms.find((r) => (r.rects || [r.bbox]).some(inside)) || null;
+  }
+
+  _thingAt(x, y, tol) {
+    let best = null;
+    const near = (px, py, what) => {
+      const d = Math.hypot(px - x, py - y);
+      if (d <= tol && (!best || d < best.d)) best = { d, ...what };
+    };
+    for (const l of this.manifest.lamps) near(l.x, l.y, { kind: 'lamp', lamp: l });
+    for (const [key, m] of this.monsters) {
+      if (this.m._hw_slot_state(m.slot) !== 1 || !this.m._hw_slot_pos(m.slot, this.out)) continue;
+      const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+      near(v[0], v[1], { kind: 'monster', key, label: m.spec.label || m.spec.type });
+    }
+    return best;
+  }
+
+  // What is under the pointer, for the status line.
+  mapHover(sx, sy) {
+    const p = this.mapPoint(sx, sy);
+    if (!p) return (this.hoverText = null);
+    const room = this._roomAt(p.x, p.y);
+    const thing = this._thingAt(p.x, p.y, p.tol);
+    let what = '';
+    if (thing && thing.kind === 'lamp') {
+      const st = this.actions.state(thing.lamp.entity);
+      what = `${friendlyName(this._hass(), thing.lamp.entity)} (${isOn(st) ? 'on' : 'off'}): click to switch`;
+    } else if (thing) what = thing.label;
+    this.hoverText = [room && room.name, what].filter(Boolean).join(': ') || null;
+    return this.hoverText;
+  }
+
+  // Click a lamp on the map: switch it, through the allowlist like a shot.
+  mapClick(sx, sy) {
+    const p = this.mapPoint(sx, sy);
+    if (!p) return false;
+    const thing = this._thingAt(p.x, p.y, p.tol);
+    if (!thing || thing.kind !== 'lamp') return false;
+    const entity = thing.lamp.entity;
+    const on = isOn(this.actions.state(entity));
+    const r = this.actions.call(entity, on ? 'turn_off' : 'turn_on');
+    if (r.ok) {
+      const slot = [...this.lampSlot].find(([, l]) => l.entity === entity);
+      if (slot) this.m._hw_set_lamp(slot[0], on ? 0 : 1);
+      this.message(`${friendlyName(this._hass(), entity)}: ${on ? 'off' : 'on'}`);
+    } else if (r.reason === 'not-allowed') this._refused(entity, r);
+    return true;
+  }
+
+  // Double-click a room on the map: go there.
+  mapGo(sx, sy) {
+    const p = this.mapPoint(sx, sy);
+    if (!p) return false;
+    const room = this._roomAt(p.x, p.y);
+    if (!room) return false;
+    const taken = [...this.monsters.values()].map((m) => m.spot).filter(Boolean);
+    const free = (s) => taken.every((t) => Math.hypot(t[0] - s[0], t[1] - s[1]) > 48);
+    const spot = free([p.x, p.y]) ? [p.x, p.y] : room.spawns.find(free) || this._middle(room);
+    if (this.m._hw_teleport(Math.round(spot[0]), Math.round(spot[1]), 90)) {
+      this.sound('telept');
+      this.message(`To the ${room.name}.`);
+    }
+    return true;
+  }
+
   // The map opens on the floor you are on: every room at that height.
   _viewFloor(roomId) {
     if (typeof this.m._hw_map_view !== 'function') return;
@@ -1388,6 +1464,14 @@ export class HouseLink {
   }
 
   status() {
+    if (this.m._hw_automap_on && this.m._hw_automap_on() && this.hoverText) {
+      const s = this._status();
+      return { ...s, target: this.hoverText };
+    }
+    return this._status();
+  }
+
+  _status() {
     const p = this.ready ? this.player() : null;
     const room = p && this.manifest.sectorRoom[p.sector];
     return { room: room ? room.name : '', target: this.aimed(), last: this.last, world: this.worldNow() };

@@ -47,6 +47,8 @@
 
 // house.wad: the automap shows the house at a glance (see AM_drawHouse).
 #include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 #include <emscripten.h>
 #include "info.h"
 #include "hu_stuff.h"
@@ -1447,7 +1449,104 @@ static void AM_drawHouse(void)
     }
 }
 
-// Room names, centred on each room, in the HUD font; only where they fit.
+// A 3x5 pixel font for names too long for the HUD font: Doom draws at
+// 320x200, where a room on a whole-floor map is often only 40 pixels wide.
+static const unsigned short tiny_font[128] = {
+    ['A'] = 0x2bed,
+    ['B'] = 0x6bae,
+    ['C'] = 0x3923,
+    ['D'] = 0x6b6e,
+    ['E'] = 0x79a7,
+    ['F'] = 0x79a4,
+    ['G'] = 0x396b,
+    ['H'] = 0x5bed,
+    ['I'] = 0x7497,
+    ['J'] = 0x126a,
+    ['K'] = 0x5bad,
+    ['L'] = 0x4927,
+    ['M'] = 0x5fed,
+    ['N'] = 0x6b6d,
+    ['O'] = 0x2b6a,
+    ['P'] = 0x6ba4,
+    ['Q'] = 0x2b73,
+    ['R'] = 0x6bad,
+    ['S'] = 0x388e,
+    ['T'] = 0x7492,
+    ['U'] = 0x5b6f,
+    ['V'] = 0x5b6a,
+    ['W'] = 0x5bfd,
+    ['X'] = 0x5aad,
+    ['Y'] = 0x5a92,
+    ['Z'] = 0x72a7,
+    ['0'] = 0x7b6f,
+    ['1'] = 0x2c97,
+    ['2'] = 0x62a7,
+    ['3'] = 0x628e,
+    ['4'] = 0x5bc9,
+    ['5'] = 0x798e,
+    ['6'] = 0x39aa,
+    ['7'] = 0x7292,
+    ['8'] = 0x2aaa,
+    ['9'] = 0x2ace,
+    ['-'] = 0x01c0,
+    ['.'] = 0x0002,
+    ['/'] = 0x12a4,
+    ['&'] = 0x2aab,
+    ['\''] = 0x2400
+};
+#define LABEL_COLOR (GRAYS + 2)
+
+static int TinyWidth(const char *s, int n)
+{
+    return n > 0 ? 4 * n - 1 : 0;
+}
+
+static void TinyText(int x, int y, const char *s, int n)
+{
+    int i, r, c;
+
+    for (i = 0; i < n; i++, x += 4)
+    {
+        unsigned short g = tiny_font[toupper((unsigned char) s[i]) & 127];
+        for (r = 0; r < 5; r++)
+            for (c = 0; c < 3; c++)
+                if (g & (1 << (14 - r * 3 - c)))
+                {
+                    int px = x + c, py = y + r;
+                    if (px >= f_x && px < f_x + f_w && py >= f_y && py < f_y + f_h)
+                        fb[py * f_w + px] = LABEL_COLOR;
+                }
+    }
+}
+
+static int BigWidth(const char *s)
+{
+    int w = 0;
+    for (; *s; s++)
+    {
+        int ch = toupper((unsigned char) *s) - HU_FONTSTART;
+        w += (ch < 0 || ch >= HU_FONTSIZE) ? 4 : SHORT(hu_font[ch]->width);
+    }
+    return w;
+}
+
+static void BigText(int x, int y, const char *s)
+{
+    for (; *s; s++)
+    {
+        int ch = toupper((unsigned char) *s) - HU_FONTSTART;
+        if (ch < 0 || ch >= HU_FONTSIZE)
+        {
+            x += 4;
+            continue;
+        }
+        V_DrawPatch(x, y, hu_font[ch]);
+        x += SHORT(hu_font[ch]->width);
+    }
+}
+
+// Room names, in each room: Doom's own font where it fits, else the small
+// one, else the small one on two lines, else initials; never over a wall.
 static void AM_drawLabels(void)
 {
     int i;
@@ -1455,34 +1554,102 @@ static void AM_drawLabels(void)
     for (i = 0; i < hw_nlabels; i++)
     {
         const char *s = hw_labels[i].text;
-        int w = 0, x, y;
-        const char *c;
+        int n = strlen(s);
+        int cx = CXMTOF(hw_labels[i].x), cy = CYMTOF(hw_labels[i].y);
+        int bw = CXMTOF(hw_labels[i].x2) - CXMTOF(hw_labels[i].x1);
+        int bh = CYMTOF(hw_labels[i].y1) - CYMTOF(hw_labels[i].y2);
+        int w, split = -1, j, best = n;
+        char initials[12];
+        int ni = 0;
 
-        for (c = s; *c; c++)
+        if (cx < f_x || cx >= f_x + f_w || cy < f_y || cy >= f_y + f_h)
+            continue;
+        w = BigWidth(s);
+        if (w + 4 <= bw && bh >= 12 && cx - w / 2 >= f_x && cx + w / 2 < f_x + f_w && cy + 4 < f_y + f_h && cy - 4 >= f_y)
         {
-            int ch = toupper((unsigned char) *c) - HU_FONTSTART;
-            w += (ch < 0 || ch >= HU_FONTSIZE) ? 4 : SHORT(hu_font[ch]->width);
+            BigText(cx - w / 2, cy - 4, s);
+            continue;
         }
-        x = CXMTOF(hw_labels[i].x) - w / 2;
-        y = CYMTOF(hw_labels[i].y) - 4;
-        if (x < f_x || x + w >= f_x + f_w || y < f_y || y + 8 >= f_y + f_h)
-            continue;
-        // Only when the name fits inside its room as drawn.
-        if (CXMTOF(hw_labels[i].x2) - CXMTOF(hw_labels[i].x1) < w + 4
-            || CYMTOF(hw_labels[i].y1) - CYMTOF(hw_labels[i].y2) < 12)
-            continue;
-        for (c = s; *c; c++)
+        w = TinyWidth(s, n);
+        if (w + 2 <= bw && bh >= 7)
         {
-            int ch = toupper((unsigned char) *c) - HU_FONTSTART;
-            if (ch < 0 || ch >= HU_FONTSIZE)
+            TinyText(cx - w / 2, cy - 2, s, n);
+            continue;
+        }
+        // Two lines, broken at the space nearest the middle.
+        for (j = 0; j < n; j++)
+            if (s[j] == ' ' && abs(j - n / 2) < best)
             {
-                x += 4;
+                best = abs(j - n / 2);
+                split = j;
+            }
+        if (split > 0)
+        {
+            int w1 = TinyWidth(s, split), w2 = TinyWidth(s + split + 1, n - split - 1);
+            if ((w1 > w2 ? w1 : w2) + 2 <= bw && bh >= 13)
+            {
+                TinyText(cx - w1 / 2, cy - 6, s, split);
+                TinyText(cx - w2 / 2, cy + 1, s + split + 1, n - split - 1);
                 continue;
             }
-            V_DrawPatch(x, y, hu_font[ch]);
-            x += SHORT(hu_font[ch]->width);
         }
+        // Initials: "Upper Rear Vestibule" is URV.
+        for (j = 0; j < n && ni < (int) sizeof(initials) - 1; j++)
+            if (s[j] != ' ' && (j == 0 || s[j - 1] == ' '))
+                initials[ni++] = s[j];
+        initials[ni] = 0;
+        w = TinyWidth(initials, ni);
+        if (ni > 0 && w + 2 <= bw && bh >= 7)
+            TinyText(cx - w / 2, cy - 2, initials, ni);
     }
+}
+
+// Mouse control (card.js): drag to pan, wheel to zoom where the pointer
+// is, and screen points to map points for clicking on things.
+EMSCRIPTEN_KEEPALIVE
+void hw_map_pan(int dx, int dy)
+{
+    m_x -= FTOM(dx);
+    m_y += FTOM(dy);
+    m_x2 = m_x + m_w;
+    m_y2 = m_y + m_h;
+    followplayer = 0;
+    f_oldloc.x = INT_MAX;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void hw_map_zoom(int permille, int sx, int sy)
+{
+    fixed_t px = m_x + FTOM(sx - f_x);
+    fixed_t py = m_y + FTOM(f_h - (sy - f_y));
+
+    scale_mtof = (fixed_t) (((long long) scale_mtof * permille) / 1000);
+    if (scale_mtof < min_scale_mtof)
+        scale_mtof = min_scale_mtof;
+    if (scale_mtof > max_scale_mtof)
+        scale_mtof = max_scale_mtof;
+    scale_ftom = FixedDiv(FRACUNIT, scale_mtof);
+    m_w = FTOM(f_w);
+    m_h = FTOM(f_h);
+    m_x = px - FTOM(sx - f_x);
+    m_y = py - FTOM(f_h - (sy - f_y));
+    m_x2 = m_x + m_w;
+    m_y2 = m_y + m_h;
+    followplayer = 0;
+    f_oldloc.x = INT_MAX;
+}
+
+// out[0], out[1]: the map point under screen pixel (sx, sy); out[2]: map
+// units in 8 pixels, for how near a click must be. Returns 0 off the map.
+EMSCRIPTEN_KEEPALIVE
+int hw_map_to_world(int sx, int sy, int *out)
+{
+    if (!automapactive || sy >= f_y + f_h)
+        return 0;
+    out[0] = (m_x + FTOM(sx - f_x)) >> FRACBITS;
+    out[1] = (m_y + FTOM(f_h - (sy - f_y))) >> FRACBITS;
+    out[2] = FTOM(8) >> FRACBITS;
+    return 1;
 }
 
 void AM_drawMarks(void)

@@ -36,6 +36,64 @@ const SP = process.env.SP || '/tmp';
   const has = (pred) => Object.entries(colours).some(([k, n]) => { const [r, g, bl] = k.split(',').map(Number); return n > 3 && pred(r, g, bl); });
   assert.ok(has((r, g, bl) => r > 200 && g > 200 && bl < 120), 'yellow: a lamp that is on');
   assert.ok(has((r, g, bl) => g > 120 && g > r + 40 && g > bl + 40), 'green: Alex or a fly brain');
+  // The mouse works the map. Screen pixels of the 320x200 frame, to page pixels.
+  const box = await card.evaluate((el) => { const r = el.shadowRoot.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const toPage = (fx, fy) => [box.x + (fx / 320) * box.w, box.y + (fy / 200) * box.h];
+  const world = (fx, fy) => page.evaluate(([x, y]) => window.card.link.mapPoint(x, y), [fx, fy]);
+  const before = await world(160, 84);
+  // Wheel in: one map pixel covers less of the house.
+  await page.mouse.move(...toPage(160, 84));
+  await page.mouse.wheel(0, -200);
+  await page.waitForTimeout(300);
+  const zoomed = await world(160, 84);
+  assert.ok(zoomed.tol < before.tol, `zooms in (${before.tol} -> ${zoomed.tol})`);
+  assert.ok(Math.hypot(zoomed.x - before.x, zoomed.y - before.y) < before.tol, 'about the point under the pointer');
+  // Drag: the map moves with the pointer.
+  await page.mouse.down();
+  await page.mouse.move(...toPage(200, 84), { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const panned = await world(160, 84);
+  assert.ok(panned.x < zoomed.x - 10, `drags to pan (${zoomed.x} -> ${panned.x})`);
+  // Hover over a lamp says what it is; a click switches it (practice: locally).
+  const lamp = await page.evaluate(() => {
+    const l = window.card.link;
+    const lamp = l.manifest.lamps.find((x) => x.entity === 'light.kitchen_ceiling') || l.manifest.lamps[0];
+    // Where the lamp is on screen: search the frame for the pixel over it.
+    for (let y = 2; y < 166; y += 2) for (let x = 2; x < 318; x += 2) {
+      const p = l.mapPoint(x, y);
+      if (p && Math.hypot(p.x - lamp.x, p.y - lamp.y) < p.tol / 2) return { x, y, entity: lamp.entity };
+    }
+    return { entity: lamp.entity };
+  });
+  assert.ok(lamp.x !== undefined, 'the lamp is on the map');
+  await page.mouse.move(...toPage(lamp.x, lamp.y));
+  await page.waitForTimeout(300);
+  const hover = await page.evaluate(() => window.card.link.status().target);
+  console.log('hover:', hover);
+  assert.match(hover, /click to switch/);
+  const wasOn = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
+  await page.mouse.click(...toPage(lamp.x, lamp.y));
+  await page.waitForTimeout(800);
+  const nowOn = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
+  assert.notEqual(nowOn, wasOn, `clicking the lamp switched it (${wasOn} -> ${nowOn})`);
+  // Double-click a room: you go there.
+  const kitchen = await page.evaluate(() => {
+    const l = window.card.link;
+    const k = l.manifest.rooms.find((r) => r.id === 'kitchen');
+    for (let y = 2; y < 166; y += 3) for (let x = 2; x < 318; x += 3) {
+      const p = l.mapPoint(x, y);
+      if (p && p.x > k.bbox.x1 + 64 && p.x < k.bbox.x2 - 64 && p.y > k.bbox.y1 + 64 && p.y < k.bbox.y2 - 64) return { x, y };
+    }
+    return null;
+  });
+  assert.ok(kitchen, 'the kitchen is on the map');
+  await page.mouse.dblclick(...toPage(kitchen.x, kitchen.y));
+  await page.waitForTimeout(500);
+  const where = await page.evaluate(() => { const l = window.card.link; return (l.manifest.sectorRoom[l.player().sector] || {}).id; });
+  assert.equal(where, 'kitchen', 'double-click took you there');
+  await page.screenshot({ path: `${SP}/automap-mouse.png` });
+
   await card.evaluate((el) => el.shadowRoot.querySelector('button.map').click());
   await page.waitForTimeout(500);
   assert.equal(await on(), 0, 'and closes it again');

@@ -281,6 +281,7 @@ export function generateFromPlan(plan, house) {
       const r = [...roomOf.values()].find((q) => q.id === y.id);
       r.sectors.push(y.sector);
       r.rects.push(y.rect);
+      r.bbox = bboxOf(r.rects);
       if (!r.hosts.includes(y.door)) r.hosts.push(y.door);
       continue;
     }

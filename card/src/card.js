@@ -40,7 +40,7 @@ function asset(name, base) {
 }
 
 // The engine exports the card needs; a missing one means mismatched files.
-const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal', '_hw_map_label'];
+const ENGINE_EXPORTS = ['_hw_spawn', '_hw_aim', '_hw_level_title', '_hw_puppet', '_hw_texture_write', '_hw_confirm', '_hw_player_goal', '_hw_map_label', '_hw_map_zoom'];
 
 let iwadPromise = null;
 function loadIwad(base) {
@@ -339,6 +339,7 @@ class HouseWadCard extends HTMLElement {
     this.shadowRoot.querySelector('button.quit').addEventListener('click', () => this._renderStart());
     this.shadowRoot.querySelector('button.map').addEventListener('click', () => {
       if (this.engine) this.engine.tap(KEY.TAB);
+      if (document.pointerLockElement) document.exitPointerLock();
       this.shadowRoot.querySelector('.screen').focus();
     });
     this.shadowRoot.querySelector('button.full').addEventListener('click', () => {
@@ -389,6 +390,8 @@ class HouseWadCard extends HTMLElement {
         e.preventDefault();
         e.stopPropagation();
         const midCheat = e.code === 'KeyE' && this._midCheat();
+        // Tab opened the map: give the mouse back so it can work the map.
+        if (e.type === 'keydown' && e.code === 'Tab') setTimeout(() => document.pointerLockElement && engine.module._hw_automap_on && engine.module._hw_automap_on() && document.exitPointerLock(), 120);
         if (e.type === 'keydown' && /^[a-z0-9]$/i.test(e.key)) this._typed(e.key.toLowerCase());
         if (e.type === 'keydown' && !e.repeat && !midCheat && (e.code === 'KeyE' || e.code === 'Space')) this.link && this.link.useNearLamp();
       }
@@ -397,9 +400,24 @@ class HouseWadCard extends HTMLElement {
     screen.addEventListener('keyup', onKey);
     screen.addEventListener('blur', () => engine.releaseAll());
 
+    // While the overhead map is up the mouse works the map: drag to pan,
+    // wheel to zoom where the pointer is, click a lamp to switch it,
+    // double-click a room to go there. Otherwise it is Doom's mouse.
+    const mapOn = () => !!(engine.module._hw_automap_on && engine.module._hw_automap_on());
+    const canvas = this.shadowRoot.querySelector('canvas');
+    const frame = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height];
+    };
+    let drag = null;
     screen.addEventListener('mousedown', (e) => {
       screen.focus();
       engine.sound.resume();
+      if (mapOn()) {
+        if (locked()) document.exitPointerLock();
+        if (e.button === 0) drag = { at: frame(e), moved: false };
+        return;
+      }
       if (!locked() && screen.requestPointerLock && !matchMedia('(pointer: coarse)').matches) {
         screen.requestPointerLock();
         return;
@@ -407,11 +425,43 @@ class HouseWadCard extends HTMLElement {
       if (e.button === 0) engine.mouse(0, 0, engine.mouseButtons | 1);
     });
     screen.addEventListener('mouseup', (e) => {
+      if (mapOn() || drag) {
+        if (drag && !drag.moved && this.link) this.link.mapClick(...frame(e));
+        drag = null;
+        return;
+      }
       if (e.button === 0) engine.mouse(0, 0, engine.mouseButtons & ~1);
     });
     screen.addEventListener('mousemove', (e) => {
+      if (mapOn()) {
+        const at = frame(e);
+        if (drag) {
+          const dx = at[0] - drag.at[0];
+          const dy = at[1] - drag.at[1];
+          if (drag.moved || Math.hypot(dx, dy) > 2) {
+            drag.moved = true;
+            engine.module._hw_map_pan(Math.round(dx), Math.round(dy));
+            drag.at = at;
+          }
+        }
+        if (this.link) this.link.mapHover(...at);
+        return;
+      }
       if (locked()) engine.mouse(Math.round(e.movementX * 4), 0);
     });
+    screen.addEventListener('dblclick', (e) => {
+      if (mapOn() && this.link) this.link.mapGo(...frame(e));
+    });
+    screen.addEventListener(
+      'wheel',
+      (e) => {
+        if (!mapOn()) return;
+        e.preventDefault();
+        const [x, y] = frame(e);
+        engine.module._hw_map_zoom(e.deltaY < 0 ? 1200 : 833, Math.round(x), Math.round(y));
+      },
+      { passive: false },
+    );
 
     for (const el of this.shadowRoot.querySelectorAll('[data-answer]')) {
       el.addEventListener('click', (e) => {

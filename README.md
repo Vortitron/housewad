@@ -39,7 +39,7 @@ Both run on [Vome](https://vome.io) hosting. The guest sign-ins are renewed mont
 | A camera in a room | A screen on that room's wall shows its live picture |
 | A tagged thing (Bermuda or ESPresense) | A keycard lying in the room it's really in. Pick it up: "Found: Car Keys. It's in the Kitchen." |
 | The exit switch by the start | Doom's tally screen, named after your home: kills are the problems you fixed. Runs `exit_scene` if set |
-| Press **Map** (or Tab) | The overhead map of the floor you're on: lamps (yellow when on, grey when off), demons (red, darker asleep), people and fly brains (green), keycards (blue), and room names where they fit. −/= zoom, F follows you |
+| Press **Map** (or Tab) | The overhead map of the floor you're on: lamps (yellow when on, grey when off), demons (red, darker asleep), people and fly brains (green), keycards (blue), and room names (in a small font, or initials, where Doom's own won't fit). The mouse works it: wheel to zoom, drag to pan, hover to see what's there, click a lamp to switch it, double-click a room to go there. −/= zoom and F follows you too |
 | Type a cheat code | `idbeholdl` turns every allowed light on; your own codes run your scenes and scripts |
 
 Under the game, a status line shows the room you're in, what you're aiming at (and its state), and the last thing that happened.
