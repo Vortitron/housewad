@@ -368,7 +368,11 @@ export function findPeople(hass, exclude = []) {
         const scanner = String(hass.states[e].attributes.friendly_name || '').replace(/^.*Distance to /, '') || e.slice(`${base}_distance_to_`.length);
         return { entity: e, scanner, area: scannerArea(hass, scanner) };
       });
-    out.push({ id: phone, name, person: person ? person.entity_id : null, area, beacon: String(beacon).toLowerCase(), ranges, distance: hass.states[`${base}_distance`] ? `${base}_distance` : null });
+    // Which phone it is: a person's name alone doesn't say what is being
+    // tracked ("Superduper" is someone's Pixel 8).
+    const device = (tracker && tracker.attributes.friendly_name) || phone.replace(/_/g, ' ');
+    const label = person && device !== name ? `${name} (${device})` : name;
+    out.push({ id: phone, name, device, label, person: person ? person.entity_id : null, area, beacon: String(beacon).toLowerCase(), ranges, distance: hass.states[`${base}_distance`] ? `${base}_distance` : null });
   }
   return out;
 }

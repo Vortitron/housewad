@@ -23,7 +23,7 @@ const AREA = 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area';
   }, [AREA, where]);
 
   const btn = await card.evaluate((el) => { const b = el.shadowRoot.querySelector('button.follow'); return { hidden: b.hidden, text: b.textContent }; });
-  assert.deepEqual(btn, { hidden: false, text: 'Follow Alex' }, 'the logged-in person has a phone to follow');
+  assert.deepEqual(btn, { hidden: false, text: 'Follow Alex (Alex phone)' }, 'the logged-in person has a phone to follow');
   const start = await room();
   console.log('start in', start);
   assert.notEqual(start, 'kitchen');

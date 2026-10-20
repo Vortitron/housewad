@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHouse, matches, UNASSIGNED } from '../card/src/model.js';
+import { buildHouse, matches, UNASSIGNED, findPeople } from '../card/src/model.js';
 import { makeFakeHass, addChores, addPeople } from '../tools/harness/fakehass.js';
 
 test('areas become rooms, floors carry over', () => {
@@ -121,7 +121,26 @@ test('appliances, alarms and running-out levels are found by what their sensors 
 
 test('phones Bermuda follows are people; a kiosk tablet is not, and neither is a keycard', () => {
   const house = buildHouse(addPeople(makeFakeHass()));
-  assert.deepEqual(house.people, [{ id: 'alex_phone', name: 'Alex', person: 'person.alex', area: 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', beacon: 'aaaa1111-2222-3333-4444-555566667777_100_1', ranges: [], distance: null }]);
+  assert.deepEqual(house.people, [{ id: 'alex_phone', name: 'Alex', device: 'Alex phone', label: 'Alex (Alex phone)', person: 'person.alex', area: 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area', beacon: 'aaaa1111-2222-3333-4444-555566667777_100_1', ranges: [], distance: null }]);
   assert.ok(!house.trackers.some((t) => t.entity_id.includes('aaaa1111')), 'the phone is not a keycard');
   assert.ok(house.persons.includes('person.alex'));
+});
+
+test("a tracked person's label says which phone it is", () => {
+  const st = (state, attributes = {}) => ({ state, attributes });
+  const hass = {
+    states: {
+      'person.superduper': st('home', { friendly_name: 'Superduper', device_trackers: ['device_tracker.pixel_8'] }),
+      'device_tracker.pixel_8': st('home', { friendly_name: 'Pixel 8' }),
+      'sensor.pixel_8_ble_transmitter': st('Transmitting', { id: '0a1b8d57-0db2-459d-80d2-b1e17395fbcb_100_40004' }),
+      'sensor.bermuda_0a1b8d570db2459d80d2b1e17395fbcb_100_40004_area': st('Loft'),
+    },
+    entities: {},
+    devices: {},
+    areas: {},
+  };
+  const [p] = findPeople(hass);
+  assert.equal(p.name, 'Superduper');
+  assert.equal(p.device, 'Pixel 8');
+  assert.equal(p.label, 'Superduper (Pixel 8)');
 });

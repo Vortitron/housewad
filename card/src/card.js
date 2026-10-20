@@ -361,7 +361,7 @@ class HouseWadCard extends HTMLElement {
     const target = this.link && this.link.followTarget();
     if (!btn || !target) return;
     btn.hidden = false;
-    btn.textContent = `Follow ${target.name}`;
+    btn.textContent = `Follow ${target.label || target.name}`;
     const show = (on) => {
       btn.setAttribute('aria-pressed', String(on));
       btn.classList.toggle('on', on);

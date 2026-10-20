@@ -648,7 +648,7 @@ export class HouseLink {
       const motionIsMe = me && here.some((p) => p.id === me.id);
       if (((presence.some(isOn) && !motionIsMe) || others.length) && imps < MAX_IMPS) {
         imps++;
-        const who = others.map((p) => p.name).join(' and ');
+        const who = others.map((p) => p.label || p.name).join(' and ');
         want.set(`imp:${room.id}`, {
           type: 'imp',
           room: room.id,
@@ -771,7 +771,7 @@ export class HouseLink {
       const here = people.filter((p) => whereIs.get(p.id) === info.id && (!me || p.id !== me.id));
       if (!here.length) continue;
       imps++;
-      const who = here.map((p) => p.name).join(' and ');
+      const who = here.map((p) => p.label || p.name).join(' and ');
       want.set(`imp:${info.id}`, {
         type: 'imp',
         room: info.id,

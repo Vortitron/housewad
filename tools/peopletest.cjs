@@ -26,7 +26,7 @@ const assert = require('assert');
   const plain = await run('');
   const alone = await run('?people');
   console.log('imps with Alex followed:', Object.entries(alone).filter(([k]) => k.startsWith('imp:')));
-  assert.equal(alone['imp:kitchen'], 'Alex: in the Kitchen', 'an imp named after the person in the room');
+  assert.equal(alone['imp:kitchen'], 'Alex (Alex phone): in the Kitchen', 'an imp named after the person in the room');
   assert.ok(!Object.keys(alone).some((k) => k.includes('hallway') && k.startsWith('imp:')), 'the kiosk tablet in the hall is nobody');
   assert.ok(!alone['soul:light.kitchen_ceiling'], 'no wasted light where Alex is');
   // Everybody who lives here is followed: a light on where nobody is, is wasted.
@@ -37,14 +37,14 @@ const assert = require('assert');
   const withSam = await run('?people=sam');
   const samExtra = Object.keys(withSam).filter((k) => k.startsWith('soul:') && !plain[k]);
   assert.deepEqual(samExtra, [], "with Sam unfollowed, nobody else's light is called wasted");
-  assert.equal(withSam['imp:kitchen'], 'Alex: in the Kitchen', 'but Alex is still in the kitchen');
+  assert.equal(withSam['imp:kitchen'], 'Alex (Alex phone): in the Kitchen', 'but Alex is still in the kitchen');
   // The hall tablet hears Alex close by: the hall, not Bermuda's kitchen.
   const hall = await run('?people=hall');
-  assert.equal(hall['imp:hallway'], 'Alex: in the Hallway', 'a listening tablet close by wins');
-  assert.ok(!hall['imp:kitchen'] || hall['imp:kitchen'] !== 'Alex: in the Kitchen', 'and Alex is not in two places');
+  assert.equal(hall['imp:hallway'], 'Alex (Alex phone): in the Hallway', 'a listening tablet close by wins');
+  assert.ok(!hall['imp:kitchen'] || hall['imp:kitchen'] !== 'Alex (Alex phone): in the Kitchen', 'and Alex is not in two places');
   // The same reading an hour old is no evidence: Bermuda's kitchen stands.
   const stale = await run('?people=stalehall');
-  assert.equal(stale['imp:kitchen'], 'Alex: in the Kitchen', 'a stale reading is ignored');
+  assert.equal(stale['imp:kitchen'], 'Alex (Alex phone): in the Kitchen', 'a stale reading is ignored');
   assert.ok(!stale['imp:hallway'], 'and does not pin Alex to the hall');
   console.log('people: all passed');
   await b.close();
