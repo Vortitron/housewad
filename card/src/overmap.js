@@ -283,6 +283,17 @@ export class OverMap {
       }
       ctx.fill();
       ctx.stroke();
+      // A name beside it, when the scene gives one (the plan card's people).
+      if (t.label) {
+        ctx.font = `600 ${Math.round(12 * px)}px system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3 * px;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.strokeText(t.label, x + r * 1.8, y);
+        ctx.fillStyle = '#eaffef';
+        ctx.fillText(t.label, x + r * 1.8, y);
+      }
     }
 
     // The player: a white arrow, the way they face.

@@ -24,6 +24,7 @@ import { buildHouse } from './model.js';
 import { generateMap } from './mapgen.js';
 import { generateFromPlan } from './planmap.js';
 import { OverMap, wallsFromLumps } from './overmap.js';
+import './plancard.js';
 import { writeWad, readWad, textPatch } from './wad.js';
 import { buildNodes } from './nodes.js';
 import { HouseActions, makeAllow, DEFAULT_ALLOW, entityContext } from './actions.js';

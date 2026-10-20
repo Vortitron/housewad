@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan card harness</title>
+<style>body { background: #1c1c1c; color: #eee; margin: 0; padding: 16px; } housewad-plan-card { max-width: 820px; margin: 0 auto; }</style>
+<housewad-plan-card></housewad-plan-card>
+<script type="module">
+// ?plan=<json>: the plan; ?from: borrow it from a (fake) dashboard instead.
+import { makeFakeHass, addPeople } from './fakehass.js';
+await import('../../dist/housewad-card.js');
+const params = new URLSearchParams(location.search);
+const floorplan = await (await fetch(params.get('plan') || 'twostorey.json')).json();
+const card = document.querySelector('housewad-plan-card');
+card.setConfig(params.has('from') ? { floorplan_from: 'house-wad' } : { floorplan });
+window.calls = [];
+const callWS = async (msg) => (msg.type === 'lovelace/config' ? { views: [{ cards: [{ type: 'custom:housewad-card', floorplan }] }] } : null);
+let realService = null;
+const callService = (domain, service, data) => { window.calls.push([domain, service, data]); return realService && realService(domain, service, data); };
+const wire = (h) => { realService = realService || h.callService; h.callWS = callWS; h.callService = callService; window.hass = h; };
+const first = makeFakeHass((h) => { wire(h); card.hass = h; });
+wire(first);
+addPeople(window.hass, { positions: params.get('people') === 'positions' });
+card.hass = window.hass;
+window.card = card;
+window.booted = true;
+</script>

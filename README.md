@@ -213,7 +213,19 @@ More than one storey: Doom can't put a room above another, so each other level s
   #   - { id: spooky, name: Spooky toilet, rects: [...], things: [barrel, barrel, candle] }
 ```
 
-The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. **Sweet Home 3D.** The card's settings can download the plan as a Sweet Home 3D file (`.sh3d`) and load one back. [Sweet Home 3D](https://www.sweethome3d.com) is free and is the easy way to draw a house:
+The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. **The floor plan on its own.** The same download has a second card, `custom:housewad-plan-card`, which shows the plan live without the game:
+- each floor as a tab, with every room filled in the colours of its lights that are on;
+- lamps you can click to switch;
+- everybody Bermuda follows, as a dot with their name and phone ("Superduper (Pixel 8)") where they seem to be;
+- a list underneath of who is in which room.
+
+```yaml
+type: custom:housewad-plan-card
+floorplan_from: house-wad   # the dashboard with your house.wad card, or give floorplan: directly
+title: Where is everyone
+```
+
+**Sweet Home 3D.** The card's settings can download the plan as a Sweet Home 3D file (`.sh3d`) and load one back. [Sweet Home 3D](https://www.sweethome3d.com) is free and is the easy way to draw a house:
 - Name each room after its Home Assistant area.
 - A gap in a wall, or a door from its catalogue, is a door. Rooms with no wall between them are open to each other.
 - A room without a ceiling is a garden.
