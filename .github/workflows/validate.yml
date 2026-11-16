@@ -21,3 +21,13 @@ jobs:
       - uses: hacs/action@main
         with:
           category: plugin
+  # As the default list checks it: by name, so HACS reads the latest release
+  # (house.wad's built files are only in its release tags, never on main).
+  hacs-release:
+    name: HACS (latest release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: plugin
+          repository: ${{ github.repository }}
