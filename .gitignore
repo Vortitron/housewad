@@ -2,4 +2,3 @@ third_party/
 build/
 node_modules/
 *.o
-dist/

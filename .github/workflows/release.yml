@@ -1,7 +1,7 @@
-# Build everything and publish a release whose tagged tree carries dist/.
-# HACS installs a dashboard card's non-JS files (wasm, the game data) only
-# from a dist/ directory in the release, so the release commit includes it;
-# main never does.
+# Build everything and publish a release: the release commit carries dist/
+# and lands on main, then is tagged. The Marketplace (and HACS) install a
+# dashboard card's files from dist/ at the release tag, and their repository
+# check looks at main, so main always holds the last release's build.
 name: Release
 on:
   workflow_dispatch:
@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -36,10 +38,16 @@ jobs:
           sed -i "s/const VERSION = '[^']*'/const VERSION = '$v'/" card/src/card.js && npm run build:card
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist
+          git add dist card/src/card.js
           git commit -qm "Release $v"
           git tag "v$v"
-          git push origin "v$v"
-          gh release create "v$v" --title "house.wad $v" --notes "See the README." --verify-tag
+          git push origin HEAD:main "v$v"
+          # Notes: docs/release-notes/<version>.md when there is one.
+          notes="docs/release-notes/$v.md"
+          if [ -f "$notes" ]; then
+            gh release create "v$v" --title "house.wad $v" --notes-file "$notes" --verify-tag
+          else
+            gh release create "v$v" --title "house.wad $v" --generate-notes --verify-tag
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
