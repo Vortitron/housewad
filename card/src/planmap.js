@@ -52,6 +52,7 @@
 
 import { MapBuilder, encodeMap, ML } from './geometry.js';
 import { SPECIAL, THING, CAMERA_TEXTURES, themeFor } from './mapgen.js';
+import { completePlan } from './plancomplete.js';
 
 const GAP = 4; // half a wall: rooms are inset this far, so walls are solid
 const YARD_DEPTH = 3; // metres of outside beyond a door
@@ -64,10 +65,12 @@ const STAIR_TAG = 100; // stair tags start here, clear of the exit doors'
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9åäöæøü]/g, '');
 
-export function generateFromPlan(plan, house) {
+export function generateFromPlan(given, house) {
+  // Doors, stairs and floor positions a plan leaves out are filled in.
+  const { plan, added } = completePlan(given);
   const S = plan.scale || 64;
   const b = new MapBuilder();
-  const manifest = { rooms: [], lamps: [], lines: {}, doors: [], cameras: [], sectorRoom: {}, start: null };
+  const manifest = { rooms: [], lamps: [], lines: {}, doors: [], cameras: [], sectorRoom: {}, start: null, completed: added };
 
   // Plan rooms <-> house rooms (HA areas).
   const byKey = new Map();

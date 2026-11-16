@@ -5,6 +5,8 @@
 import { DEFAULT_ALLOW, looksImportant, entityContext } from './actions.js';
 import { findPeople } from './model.js';
 import { planToSh3d, sh3dToPlan } from './sh3d.js';
+import { completePlan } from './plancomplete.js';
+import './planedit.js';
 
 const KINDS = [
   { pattern: 'light.*', label: 'Lights', hint: 'shoot a lamp: off; use it: on' },
@@ -43,6 +45,11 @@ export class HouseWadCardEditor extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._drawn = '';
+    // The form is redrawn as the config changes; the plan editor below it
+    // stays put, so a drag is never interrupted.
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="form"></div><div class="planhost"></div>`;
+    this._form = this.shadowRoot.querySelector('.form');
+    this._planHost = this.shadowRoot.querySelector('.planhost');
   }
 
   setConfig(config) {
@@ -52,6 +59,7 @@ export class HouseWadCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._planEditor) this._planEditor.hass = hass;
     this._render();
   }
 
@@ -71,11 +79,51 @@ export class HouseWadCardEditor extends HTMLElement {
     this._set(allow);
   }
 
+  // The plan editor opens under the form; every change goes straight into
+  // the card's config (HA's preview rebuilds the level), Save keeps it.
+  _togglePlanEditor() {
+    if (this._planEditor) {
+      this._planEditor.remove();
+      this._planEditor = null;
+    } else {
+      const ed = document.createElement('housewad-plan-editor');
+      ed.addEventListener('plan-changed', (e) => this._setPlan(e.detail.plan, true));
+      ed.plan = this._config.floorplan || null;
+      ed.hass = this._hass;
+      this._planHost.appendChild(ed);
+      this._planEditor = ed;
+    }
+    this._render();
+  }
+
+  _setPlan(plan, fromEditor = false) {
+    const config = { ...this._config };
+    if (plan) config.floorplan = plan;
+    else delete config.floorplan;
+    this._config = config;
+    if (!plan && this._planEditor) {
+      this._planEditor.remove();
+      this._planEditor = null;
+    }
+    if (!fromEditor && plan && this._planEditor) this._planEditor.plan = plan;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+    this._render();
+  }
+
   _planSummary() {
     const plan = this._config.floorplan;
     if (!plan || !plan.rooms) return 'No floor plan yet: the house is built as rooms off a corridor.';
     const levels = Object.keys(plan.levels || {}).length;
-    return `This card has a floor plan: ${plan.rooms.length} rooms${levels ? ` on ${levels + 1} floors` : ''}.`;
+    const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+    let added = '';
+    try {
+      const a = completePlan(plan).added;
+      const bits = [a.doors && n(a.doors, 'door', 'doors'), a.exits && n(a.exits, 'door out', 'doors out'), a.stairs && n(a.stairs, 'flight of stairs', 'flights of stairs')].filter(Boolean);
+      if (bits.length) added = ` house.wad adds ${bits.join(', ')} where the plan has none.`;
+    } catch (e) {
+      // a half-drawn plan: nothing to say yet
+    }
+    return `This card has a floor plan: ${n(plan.rooms.length, 'room', 'rooms')}${levels ? ` on ${levels + 1} floors` : ''}.${added}`;
   }
 
   _export() {
@@ -94,8 +142,7 @@ export class HouseWadCardEditor extends HTMLElement {
     try {
       const plan = await sh3dToPlan(new Uint8Array(await file.arrayBuffer()), this._config.floorplan || null);
       if (!plan.rooms.length) throw new Error('it has no rooms in it');
-      this._config = { ...this._config, floorplan: plan };
-      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
+      this._setPlan(plan);
       const levels = Object.keys(plan.levels || {}).length;
       const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
       this._note = { text: `Loaded ${file.name}: ${n(plan.rooms.length, 'room', 'rooms')}, ${n(plan.doors.length, 'door', 'doors')} and ${n(plan.exits.length, 'door out', 'doors out')}${levels ? ` on ${levels + 1} floors` : ''}. Save the card to keep it.` };
@@ -120,7 +167,6 @@ export class HouseWadCardEditor extends HTMLElement {
     const follow = this._config.follow === undefined ? true : this._config.follow;
     const followOpts = [[true, 'My phone (the one linked to my person)'], ...phones.map((p) => [p.id, `${p.name}${p.person ? '' : ` (${p.id})`}`]), [false, 'Off']];
     const html = `
-      <style>${STYLE}</style>
       <h3>What "Play for real" may control</h3>
       <p>Practice never touches the house. Playing for real can only change what is ticked here.</p>
       ${KINDS.map((k) => box(k.pattern, k.label, k.hint)).join('')}
@@ -135,27 +181,33 @@ export class HouseWadCardEditor extends HTMLElement {
       <label><span>Follow <select data-follow>${followOpts.map(([v, l]) => `<option value="${escape(JSON.stringify(v))}" ${JSON.stringify(v) === JSON.stringify(follow) ? 'selected' : ''}>${escape(l)}</option>`).join('')}</select></span></label>
       <h3>Difficulty</h3>
       <label><span>Skill <select data-skill>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === skill ? 'selected' : ''}>${n} ${['', "I'm too young to die", 'Hey, not too rough', 'Hurt me plenty', 'Ultra-Violence', 'Nightmare!'][n]}</option>`).join('')}</select></span></label>
+      <p>Cheats, rules and the other options stay in the code editor.</p>
       <h3>Floor plan</h3>
-      <p>${this._planSummary()} Draw or change it in <a href="https://www.sweethome3d.com" target="_blank" rel="noopener">Sweet Home 3D</a> (free): name each room after its Home Assistant area. A gap in a wall, or a door from its catalogue, is a door; a room without a ceiling is a garden; a label <code>BLE: name</code> marks a Bluetooth proxy, and <code>Start</code> where you start.</p>
+      <p>${this._planSummary()}</p>
+      <div class="row"><button class="btn" data-draw>${this._planEditor ? 'Close the plan' : this._config.floorplan ? 'Change the plan' : 'Draw the plan'}</button>${this._config.floorplan ? '<button class="btn" data-noplan>No plan: rooms off a corridor</button>' : ''}</div>
+      ${this._planEditor ? '<p>Changes show in the preview as you make them; <b>Save</b> keeps them.</p>' : ''}
+      <p>Or draw it in <a href="https://www.sweethome3d.com" target="_blank" rel="noopener">Sweet Home 3D</a> (free): name each room after its Home Assistant area. A gap in a wall, or a door from its catalogue, is a door; a room without a ceiling is a garden; a label <code>BLE: name</code> marks a Bluetooth proxy, and <code>Start</code> where you start.</p>
       <div class="row">${this._config.floorplan ? '<button class="btn" data-export>Download as .sh3d</button>' : ''}<label class="file"><input type="file" accept=".sh3d" data-import hidden><span class="btn">Load a .sh3d file...</span></label></div>
-      ${this._note ? `<p class="note ${this._note.bad ? 'bad' : ''}">${escape(this._note.text)}</p>` : ''}
-      <p>Cheats, rules and the other options stay in the code editor.</p>`;
+      ${this._note ? `<p class="note ${this._note.bad ? 'bad' : ''}">${escape(this._note.text)}</p>` : ''}`;
     if (html === this._drawn) return;
     this._drawn = html;
-    const scroll = [...this.shadowRoot.querySelectorAll('.list')].map((l) => l.scrollTop);
-    this.shadowRoot.innerHTML = html;
-    this.shadowRoot.querySelectorAll('.list').forEach((l, i) => (l.scrollTop = scroll[i] || 0));
-    this.shadowRoot.querySelectorAll('input[data-item]').forEach((el) => el.addEventListener('change', () => this._toggle(el.dataset.item, el.checked)));
-    const fol = this.shadowRoot.querySelector('select[data-follow]');
+    const scroll = [...this._form.querySelectorAll('.list')].map((l) => l.scrollTop);
+    this._form.innerHTML = html;
+    this._form.querySelectorAll('.list').forEach((l, i) => (l.scrollTop = scroll[i] || 0));
+    this._form.querySelector('[data-draw]').addEventListener('click', () => this._togglePlanEditor());
+    const none = this._form.querySelector('[data-noplan]');
+    if (none) none.addEventListener('click', () => this._setPlan(null));
+    this._form.querySelectorAll('input[data-item]').forEach((el) => el.addEventListener('change', () => this._toggle(el.dataset.item, el.checked)));
+    const fol = this._form.querySelector('select[data-follow]');
     fol.addEventListener('change', () => {
       this._config = { ...this._config, follow: JSON.parse(fol.value) };
       this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
     });
-    const exp = this.shadowRoot.querySelector('[data-export]');
+    const exp = this._form.querySelector('[data-export]');
     if (exp) exp.addEventListener('click', () => this._export());
-    const imp = this.shadowRoot.querySelector('input[data-import]');
+    const imp = this._form.querySelector('input[data-import]');
     imp.addEventListener('change', () => imp.files[0] && this._import(imp.files[0]));
-    const sel = this.shadowRoot.querySelector('select[data-skill]');
+    const sel = this._form.querySelector('select[data-skill]');
     sel.addEventListener('change', () => {
       this._config = { ...this._config, skill: Number(sel.value) };
       this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
