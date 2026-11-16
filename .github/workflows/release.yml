@@ -21,7 +21,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The version the release was built and tested with; a newer one is a
+      # deliberate change (ZDBSP stopped compiling once on an unpinned one).
       - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.11
       - name: Freedoom
         run: |
           mkdir -p third_party && cd third_party

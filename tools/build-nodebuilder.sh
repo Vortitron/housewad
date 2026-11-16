@@ -14,7 +14,7 @@ SRCS="main.cpp getopt.c getopt1.c blockmapbuilder.cpp processor.cpp processor_ud
 OBJS=()
 for s in $SRCS; do
     o="build/zdbsp/${s%.*}.o"
-    [ -f "$o" ] || em++ -O2 -DDISABLE_SSE -DNO_MAP_VIEWER -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp -include strings.h -include stdlib.h -sUSE_ZLIB=1 -Wno-everything -c "$Z/$s" -o "$o"
+    [ -f "$o" ] || em++ -O2 -DDISABLE_SSE -DNO_MAP_VIEWER -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp -include strings.h -include stdlib.h -include algorithm -sUSE_ZLIB=1 -Wno-everything -c "$Z/$s" -o "$o"
     OBJS+=("$o")
 done
 em++ -O2 "${OBJS[@]}" -o dist/housewad-zdbsp.js -sUSE_ZLIB=1 \
