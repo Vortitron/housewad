@@ -870,17 +870,40 @@ export class HouseLink {
     }
     if (room && room === this.currentRoom && room === this.followSeen.done) {
       const pos = this._position(target, room);
-      if (pos) this.m._hw_player_goal(Math.round(pos[0]), Math.round(pos[1]), 3);
+      if (!pos) return;
+      this.m._hw_player_goal(Math.round(pos[0]), Math.round(pos[1]), 3);
+      // Walking stops at anything solid (a lamp, a demon): when it has not
+      // got closer for a while, hop there instead, if the spot is clear.
+      const p = this.player();
+      if (!p) return;
+      const d = Math.hypot(p.x - pos[0], p.y - pos[1]);
+      const stuck = this.followStuck;
+      if (!stuck || d < 48 || d < stuck.d - 8) this.followStuck = { d, at: now };
+      else if (now - stuck.at > 2500) {
+        this.followStuck = { d: 0, at: now };
+        if (this._clearSpot(pos)) this.m._hw_teleport(Math.round(pos[0]), Math.round(pos[1]), Math.round(p.angle));
+      }
     }
+  }
+
+  // Nothing at (x, y) a teleport would land on: a Doom teleport destroys
+  // what is there, and a lamp destroyed is a light switched off for real.
+  _clearSpot([x, y], r = 56) {
+    if (this.manifest.lamps.some((l) => Math.hypot(l.x - x, l.y - y) < r)) return false;
+    for (const mon of this.monsters.values()) {
+      if (this.m._hw_slot_state(mon.slot) !== 1 || !this.m._hw_slot_pos(mon.slot, this.out)) continue;
+      const v = this.m.HEAP32.subarray(this.out >> 2, (this.out >> 2) + 2);
+      if (Math.hypot(v[0] - x, v[1] - y) < r) return false;
+    }
+    return true;
   }
 
   _followInto(target, room) {
     const info = this.roomInfo.get(room);
     if (!info) return;
     const mid = this._middle(info);
-    const taken = [...this.monsters.values()].map((m) => m.spot).filter(Boolean);
-    const free = (s) => taken.every((t) => Math.hypot(t[0] - s[0], t[1] - s[1]) > 64);
     // Where the phone seems to be, if that's clear; else a clear spot.
+    const free = (s) => this._clearSpot(s, 64);
     const est = this._position(target, room);
     const spot = (est && free(est) && est) || info.spawns.find(free) || mid;
     const angle = Math.round((Math.atan2(mid[1] - spot[1], mid[0] - spot[0]) * 180) / Math.PI + 360) % 360 || 90;
@@ -1038,8 +1061,8 @@ export class HouseLink {
     if (!p) return false;
     const room = this._roomAt(p.x, p.y);
     if (!room) return false;
-    const taken = [...this.monsters.values()].map((m) => m.spot).filter(Boolean);
-    const free = (s) => taken.every((t) => Math.hypot(t[0] - s[0], t[1] - s[1]) > 48);
+    // A clear spot: a teleport destroys what it lands on, lamps included.
+    const free = (s) => this._clearSpot(s, 48);
     const spot = free([p.x, p.y]) ? [p.x, p.y] : room.spawns.find(free) || this._middle(room);
     if (this.m._hw_teleport(Math.round(spot[0]), Math.round(spot[1]), 90)) {
       this.sound('telept');

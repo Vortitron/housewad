@@ -86,6 +86,22 @@ const SP = process.env.SP || '/tmp';
   await page.waitForTimeout(800);
   const nowOn = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
   assert.notEqual(nowOn, wasOn, `clicking the lamp switched it (${wasOn} -> ${nowOn})`);
+  // Going somewhere never lands on a lamp: a Doom teleport destroys what it
+  // lands on, and a destroyed lamp is a light switched off for real.
+  const lightBefore = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
+  const landed = await page.evaluate(({ x, y, entity }) => {
+    const l = window.card.link;
+    l.mapGo(x, y);
+    const p = l.player();
+    const lp = l.manifest.lamps.find((q) => q.entity === entity);
+    return Math.hypot(p.x - lp.x, p.y - lp.y);
+  }, lamp);
+  await page.waitForTimeout(600);
+  const after = await page.evaluate((e) => window.card.link.actions.state(e).state, lamp.entity);
+  console.log('double-click on the lamp: landed', Math.round(landed), 'units from it; light', lightBefore, '->', after);
+  assert.ok(landed >= 32, 'not on the lamp');
+  assert.equal(after, lightBefore, 'the light is untouched');
+
   // Double-click a room: you go there.
   const kitchen = await page.evaluate(() => {
     const l = window.card.link;

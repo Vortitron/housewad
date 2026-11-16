@@ -85,6 +85,8 @@ const STYLE = `
   .bar button.follow.on { background: #ff3b1f; color: #200; }
   .touch { position: absolute; inset: auto 0 17% 0; display: none; justify-content: space-between; padding: 8px; pointer-events: none; }
   .touch.on { display: flex; }
+  /* On the map, fingers work the map: only the MAP key stays. */
+  .touch.mapping .pad, .touch.mapping .act > div:not(.mapkey) { visibility: hidden; }
   .pad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; pointer-events: auto; }
   .pad div, .act div { background: #fff2; border: 1px solid #fff5; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 12px ui-monospace, monospace; }
   .act { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
@@ -323,7 +325,7 @@ class HouseWadCard extends HTMLElement {
             <div class="act">
               <div data-key="${KEY.FIRE}">FIRE</div>
               <div data-key="${KEY.USE}">USE</div>
-              <div data-key="${KEY.TAB}">MAP</div>
+              <div class="mapkey" data-key="${KEY.TAB}">MAP</div>
             </div>
           </div>
         </div>
@@ -425,7 +427,12 @@ class HouseWadCard extends HTMLElement {
       return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height];
     };
     let drag = null;
+    // Mouse events a browser makes up after a touch: ignored on the map, so a
+    // tap is not handled twice.
+    let touchedAt = 0;
+    const fromTouch = () => Date.now() - touchedAt < 800;
     screen.addEventListener('mousedown', (e) => {
+      if (mapOn() && fromTouch()) return;
       screen.focus();
       engine.sound.resume();
       if (mapOn()) {
@@ -440,6 +447,7 @@ class HouseWadCard extends HTMLElement {
       if (e.button === 0) engine.mouse(0, 0, engine.mouseButtons | 1);
     });
     screen.addEventListener('mouseup', (e) => {
+      if (mapOn() && fromTouch()) return;
       if (mapOn() || drag) {
         if (drag && !drag.moved && this.link) this.link.mapClick(...frame(e));
         drag = null;
@@ -448,6 +456,7 @@ class HouseWadCard extends HTMLElement {
       if (e.button === 0) engine.mouse(0, 0, engine.mouseButtons & ~1);
     });
     screen.addEventListener('mousemove', (e) => {
+      if (mapOn() && fromTouch()) return;
       if (mapOn()) {
         const at = frame(e);
         if (drag) {
@@ -465,7 +474,7 @@ class HouseWadCard extends HTMLElement {
       if (locked()) engine.mouse(Math.round(e.movementX * 4), 0);
     });
     screen.addEventListener('dblclick', (e) => {
-      if (mapOn() && this.link) this.link.mapGo(...frame(e));
+      if (mapOn() && !fromTouch() && this.link) this.link.mapGo(...frame(e));
     });
     screen.addEventListener(
       'wheel',
@@ -478,6 +487,70 @@ class HouseWadCard extends HTMLElement {
       },
       { passive: false },
     );
+
+    // Fingers on the map: one drags it, two pinch to zoom about where they
+    // are, a tap switches a lamp (and says what is there), a double tap goes
+    // to that room. The touch keys keep working as keys.
+    const fingers = new Map();
+    let gesture = null;
+    let lastTap = { t: 0, at: null };
+    screen.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' || !mapOn() || e.target.closest('[data-key], [data-answer]')) return;
+      touchedAt = Date.now();
+      const at = frame(e);
+      fingers.set(e.pointerId, at);
+      if (fingers.size === 1) gesture = { kind: 'pan', at, moved: false };
+      else if (fingers.size === 2) {
+        const [a, b] = [...fingers.values()];
+        gesture = { kind: 'pinch', dist: Math.hypot(a[0] - b[0], a[1] - b[1]) };
+      }
+    });
+    screen.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || !fingers.has(e.pointerId) || !gesture) return;
+      touchedAt = Date.now();
+      const at = frame(e);
+      fingers.set(e.pointerId, at);
+      if (!at.every(Number.isFinite)) return;
+      if (gesture.kind === 'pan' && fingers.size === 1) {
+        const dx = at[0] - gesture.at[0];
+        const dy = at[1] - gesture.at[1];
+        if (gesture.moved || Math.hypot(dx, dy) > 4) {
+          gesture.moved = true;
+          engine.module._hw_map_pan(Math.round(dx), Math.round(dy));
+          gesture.at = at;
+        }
+      } else if (gesture.kind === 'pinch' && fingers.size === 2) {
+        const [a, b] = [...fingers.values()];
+        const dist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        const ratio = dist / (gesture.dist || 1);
+        if (Math.abs(ratio - 1) > 0.04) {
+          engine.module._hw_map_zoom(Math.round(ratio * 1000), Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2));
+          gesture.dist = dist;
+        }
+      }
+    });
+    const lift = (e) => {
+      if (e.pointerType !== 'touch' || !fingers.has(e.pointerId)) return;
+      touchedAt = Date.now();
+      const at = fingers.get(e.pointerId);
+      fingers.delete(e.pointerId);
+      if (gesture && gesture.kind === 'pan' && !gesture.moved && e.type === 'pointerup' && this.link && at.every(Number.isFinite)) {
+        const now = Date.now();
+        if (now - lastTap.t < 350 && lastTap.at && Math.hypot(at[0] - lastTap.at[0], at[1] - lastTap.at[1]) < 12) {
+          this.link.mapGo(...at);
+          lastTap = { t: 0, at: null };
+        } else {
+          this.link.mapHover(...at);
+          this.link.mapClick(...at);
+          lastTap = { t: now, at };
+        }
+      }
+      if (!fingers.size) gesture = null;
+      // One finger left after a pinch carries on as a drag, without a tap.
+      else if (gesture && gesture.kind === 'pinch') gesture = { kind: 'pan', at: [...fingers.values()][0], moved: true };
+    };
+    screen.addEventListener('pointerup', lift);
+    screen.addEventListener('pointercancel', lift);
 
     for (const el of this.shadowRoot.querySelectorAll('[data-answer]')) {
       el.addEventListener('click', (e) => {
@@ -530,6 +603,8 @@ class HouseWadCard extends HTMLElement {
 
   _showStatus() {
     if (!this.link) return;
+    const pad = this.shadowRoot.querySelector('.touch');
+    if (pad && this.engine && this.engine.module._hw_automap_on) pad.classList.toggle('mapping', !!this.engine.module._hw_automap_on());
     const s = this.link.status();
     const set = (cls, text) => {
       const el = this.shadowRoot.querySelector(`.status .${cls}`);

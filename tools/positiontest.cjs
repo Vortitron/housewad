@@ -66,9 +66,14 @@ const at = ([x, y]) => [x * U, -y * U]; // plan metres -> map units
     const id = 'sensor.bermuda_aaaa1111222233334444555566667777_100_1_area';
     window.card.hass = { ...h, states: { ...h.states, [id]: { ...h.states[id], state: 'Living Room', last_changed: new Date().toISOString() } } };
   });
-  await page.waitForTimeout(12000);
-  p = await me();
+  // Follow waits 6 s for the phone to settle in a room, then walks: wait
+  // until the player is there (or 25 s) rather than a fixed time.
   const radarSees = at([9.3, 6]);
+  for (let waited = 0; waited < 25000; waited += 500) {
+    await page.waitForTimeout(500);
+    p = await me();
+    if (p.room === 'living_room' && off(p, radarSees) < 80) break;
+  }
   console.log('living room at', [p.x, p.y], 'radar sees', radarSees, 'off by', Math.round(off(p, radarSees)));
   assert.equal(p.room, 'living_room');
   assert.ok(off(p, radarSees) < 80, 'where the radar sees somebody');
