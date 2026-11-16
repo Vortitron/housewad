@@ -10,7 +10,7 @@ house.wad is a Home Assistant dashboard card. It reads your floors, areas and de
 
 ## Quick start
 
-1. **Install it with HACS.** [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Vortitron&repository=housewad&category=plugin) Or in HACS: ⋮ → *Custom repositories* → `https://github.com/Vortitron/housewad`, type *Dashboard*. Then **Download**.
+1. **Install it.** In Home Assistant 2026.11 and later: Settings → Marketplace, search for **house.wad**, install. Earlier versions: HACS, search for **house.wad**, download. (Not found? See [Install](#install).)
 2. **Add the card.** Edit a dashboard → *Add card* → **house.wad**. It is best in a view of its own set to *Panel*, so it gets the whole screen.
 3. **Press Practice.** Your house as a Doom level, and nothing in the real house moves.
 4. **Play for real.** Open the card's settings (the pencil, then the card) and tick what the game may control. Start with Lights. Then press **Play for real** and shoot a lamp.
@@ -39,7 +39,7 @@ Both run on [Vome](https://vome.io) hosting. The guest sign-ins are renewed mont
 | A camera in a room | A screen on that room's wall shows its live picture |
 | A tagged thing (Bermuda or ESPresense) | A keycard lying in the room it's really in. Pick it up: "Found: Car Keys. It's in the Kitchen." |
 | The exit switch by the start | Doom's tally screen, named after your home: kills are the problems you fixed. Runs `exit_scene` if set |
-| Press **Map** (or Tab) | The overhead map of the floor you're on, drawn sharp at your screen's resolution: each room filled in the colour of its lights that are on (a stripe for each light; dark when they're off), lamps as bulbs in their own colour, demons (red, darker asleep), people and fly brains (green), you (the white arrow), and every room's name. The mouse works it: wheel to zoom, drag to pan, hover to see what's there, click a lamp to switch it, double-click a room to go there. −/= zoom and F follows you too. `classic_map: true` in the card gives Doom's own 320x200 map instead |
+| Press **Map** (or Tab) | The overhead map of the floor you're on, drawn sharp at your screen's resolution: each room filled in the colour of its lights that are on (a stripe for each light; dark when they're off), lamps as bulbs in their own colour, demons (red, darker asleep), people and fly brains (green), you (the white arrow), and every room's name. The mouse works it: wheel to zoom, drag to pan, hover to see what's there, click a lamp to switch it, double-click a room to go there. On a phone: pinch, drag, tap a lamp, double-tap a room. −/= zoom and F follows you too. `classic_map: true` in the card gives Doom's own 320x200 map instead |
 | Type a cheat code | `idbeholdl` turns every allowed light on; your own codes run your scenes and scripts |
 
 Under the game, a status line shows the room you're in, what you're aiming at (and its state), and the last thing that happened.
@@ -101,9 +101,15 @@ Turn this off with `flies: false`.
 
 ## Install
 
-**HACS:** add this repository as a custom repository (type *Dashboard*), install **house.wad**, then add the card to a dashboard. A panel view gives it the whole screen.
+**Home Assistant 2026.11 and later:** open Settings → Marketplace, search for **house.wad** and install it.
 
-**Manual:** copy everything in a release's `dist/` folder to `config/www/housewad/`, add `/local/housewad/housewad-card.js` as a JavaScript module resource, and add the card.
+**Earlier versions, with HACS:** open HACS, search for **house.wad** and download it.
+
+Either way the card's resource is registered for you. Then add the card to a dashboard; a view of its own set to *Panel* gives it the whole screen.
+
+**From the repository, if the search doesn't find it** (an older catalogue, say): add `https://github.com/Vortitron/housewad` as a custom repository of type *Dashboard* in the Marketplace or HACS, then install house.wad from there. On the Marketplace, custom repositories need GitHub connected, and only get update checks while it is.
+
+**By hand:** copy everything in a release's `dist/` folder to `config/www/housewad/`, add `/local/housewad/housewad-card.js` as a JavaScript module resource (Settings → Dashboards → ⋮ → Resources), and add the card.
 
 ```yaml
 type: custom:housewad-card
@@ -181,7 +187,20 @@ Without a floor plan, each floor becomes a corridor with its rooms down both sid
 
 ### Your real floor plan
 
-Give the card a `floorplan` and it builds the house as it really is instead: each room's shape as rectangles in metres, the doors between rooms, the doors out, and ceiling heights. Rooms are matched to Home Assistant areas by `area`, so each area's lamps, switches, screens and doors land in its room; areas the plan has no room for go in an annex off the garden.
+Give the card a floor plan and it builds the house as it really is: each room's shape, where the doors are, how high the ceilings are. Rooms are matched to Home Assistant areas, so each area's lamps, switches, screens and doors land in its room; areas the plan has no room for go in an annex off the garden.
+
+**Draw it in the card's settings** (the pencil, then the card, then *Draw the plan*). It starts from a sketch of your Home Assistant areas, a block of rooms per floor. Drag each room to where it really is and pull its corner to size it, on a 25 cm grid. Add a part for an L-shaped room, mark gardens as outside, and put a photo or drawing of your real plan underneath to trace over. The game in the preview rebuilds as you go; *Save* keeps it.
+
+![The plan editor in the card's settings: rooms from Home Assistant's areas, dragged into place, with doors and stairs worked out](docs/plan-editor.png)
+
+**Doors and stairs are worked out for you.** A plan of rooms is enough:
+- a door wherever two rooms share a metre of wall, and one out to every garden drawn against the house;
+- stairs between each floor and the next, in the rooms one above the other;
+- each upper floor placed beside the house in the map (Doom can't put a room above another).
+
+To choose the doors yourself, switch the editor to *Doors* and click a wall to put one there, or a door to take it away. Where two rooms are drawn over each other, the one placed last keeps the space. The plan is the same format as [Mosaic](https://github.com/Vortitron/mosaic)'s, so a plan drawn in either works in both.
+
+Or write it yourself: rectangles in metres, y downwards.
 
 ```yaml
 floorplan:
@@ -213,7 +232,11 @@ More than one storey: Doom can't put a room above another, so each other level s
   #   - { id: spooky, name: Spooky toilet, rects: [...], things: [barrel, barrel, candle] }
 ```
 
-The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. **The floor plan on its own.** The same download has a second card, `custom:housewad-plan-card`, which shows the plan live without the game:
+The plan lives in the card's config rather than in a file under `/local`, because `/local` is served without a login and a floor plan is not something to publish. Any of `doors`, `exits` and `stairs` you leave out is worked out as above; give one (even as `[]`) and that's what you get.
+
+### The floor plan on its own
+
+ The same download has a second card, `custom:housewad-plan-card`, which shows the plan live without the game:
 - each floor as a tab, with every room filled in the colours of its lights that are on;
 - lamps you can click to switch;
 - everybody Bermuda follows, as a dot with their name and phone ("Superduper (Pixel 8)") where they seem to be;
@@ -225,7 +248,9 @@ floorplan_from: house-wad   # the dashboard with your house.wad card, or give fl
 title: Where is everyone
 ```
 
-**Sweet Home 3D.** The card's settings can download the plan as a Sweet Home 3D file (`.sh3d`) and load one back. [Sweet Home 3D](https://www.sweethome3d.com) is free and is the easy way to draw a house:
+### Sweet Home 3D
+
+The card's settings can download the plan as a Sweet Home 3D file (`.sh3d`) and load one back. [Sweet Home 3D](https://www.sweethome3d.com) is free and is the easy way to draw a house:
 - Name each room after its Home Assistant area.
 - A gap in a wall, or a door from its catalogue, is a door. Rooms with no wall between them are open to each other.
 - A room without a ceiling is a garden.
