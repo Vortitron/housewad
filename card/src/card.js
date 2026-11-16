@@ -31,7 +31,7 @@ import { HouseActions, makeAllow, DEFAULT_ALLOW, entityContext } from './actions
 import { HouseLink, hudText } from './house.js';
 import './editor.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.10.0';
 const ASSETS = new URL('./', import.meta.url);
 
 // Every file the card loads carries its version, so an upgrade never pairs a
